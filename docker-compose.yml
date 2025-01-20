@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  geocodeur-db:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: geocodeur
+    ports:
+      - "5432:5432"
+    volumes:
+      - geocodeur_data:/var/lib/postgresql/data
+
+volumes:
+  geocodeur_data:
+    driver: local
