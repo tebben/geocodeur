@@ -69,7 +69,7 @@ Now we can download all data from Overture Maps with a given bounding box using 
 We can now process the data to mold it into something we can use.
 
 ```sh
-./scripts/process.sh
+go run main.go process
 ```
 
 ### Load data into the database
@@ -127,3 +127,9 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 
 - Take all pois and do not filter on confidence for now
 - Add relations for locality to the pois
+
+## Building executable
+
+```sh
+go build -ldflags="-s -w" -gcflags="-m" -o geocodeur main.go
+```
