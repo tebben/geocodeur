@@ -107,7 +107,7 @@ ID: 085036a4ffffffff01d4415f1a3b6d42, Name: Vught, Class: division, Subclass: co
 
 ### Database
 
-The database consists of 2 table: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a gin_trgm_ops index on it for fast searching using the PostgreSQL extension `pg_trgm`.
+The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm`.
 
 ![example](./static/example.jpg)
 
