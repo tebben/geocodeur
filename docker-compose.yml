@@ -2,9 +2,8 @@ version: "3.8"
 
 services:
   geocodeur-db:
-    build:
-      context: ./database
-      dockerfile: Dockerfile
+    image: "postgis/postgis:17-3.5-alpine"
+    container_name: "geocodeur-db"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
