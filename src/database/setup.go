@@ -122,6 +122,10 @@ func processParquet(pool *pgxpool.Pool, path string) {
 				if len(rec.Relation) > 0 {
 					relations := strings.Split(rec.Relation, ";")
 					for _, relation := range relations {
+						if rec.Name == relation {
+							continue
+						}
+
 						alias := rec.Name + " " + relation
 						addAlias(tx, rec.ID, alias)
 
