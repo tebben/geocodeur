@@ -105,18 +105,23 @@ ID: 085036a4ffffffff01d4415f1a3b6d42, Name: Vught, Class: division, Subclass: co
 
 ## Data
 
+### Database
+
+The database consists of 2 table: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a gin_trgm_ops index on it for fast searching using the PostgreSQL extension `pg_trgm`.
+
+![example](./static/example.jpg)
+
 ### Division
 
-- Only divisions with a primary name, we cannot search for a division without a name so leave them out.
 - Add locality for neighbourhoods features
 - Add county for locality features
 
 ### Road
 
 - Only segments with a primary name, we cannot search for a segment without a name so leave them out.
-- Only segments with a subtype road, tracks are not usefull for geocoding and water we will get from a different source since water are water segments and not water bodies.
+- Only segments with a subtype road. Tracks are not usefull for geocoding and water we will get from a different source since water features are segments and not water bodies.
 - Roads are split up in multiple segments merge them by name, class (overture) and connecting lines
-- Add relations for locality and county to the roads but not for motorways because this extra information is not usefull.
+- Add relations for locality and county to roads but exlude realtions for motorways since this does not make much sense.
 
 ### POI
 
