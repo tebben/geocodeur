@@ -38,6 +38,19 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 				a.subclass,
 				b.alias,
 				similarity(b.alias, $1) AS sim,
+				CASE
+					WHEN a.class = 'division' THEN 1
+					WHEN a.class = 'road' THEN 2
+					WHEN a.class = 'poi' THEN 3
+					ELSE 0
+				END AS class_score,
+				CASE
+					WHEN a.subclass = 'locality' THEN 1
+					WHEN a.subclass = 'county' THEN 2
+					WHEN a.subclass = 'neighboorhood' THEN 3
+					WHEN a.subclass = 'microhood' THEN 4
+					ELSE 0
+				END AS subclass_score,
 				ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY similarity(b.alias, $1) DESC) AS rnk
 			FROM %s a
 			JOIN %s b ON a.id = b.id
@@ -46,7 +59,7 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 		SELECT name, class, subclass, alias, sim
 		FROM ranked_aliases
 		WHERE rnk = 1
-		ORDER BY sim desc
+		ORDER BY sim desc, class_score asc, subclass_score asc
 		LIMIT 10;`, database.TABLE_OVERTURE, database.TABLE_SEARCH)
 
 	rows, err := pool.Query(context.Background(), query, input)
