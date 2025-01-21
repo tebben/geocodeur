@@ -1,274 +1,124 @@
 # geocodeur
 
-## Temp
+This project explores the creation of a geocoder using Overture Maps data with free-text search functionality, leveraging similarity search based on trigram matching. The goal is not to replicate the original Overture data but to design a simplified schema focused solely on geocoding needs, avoiding unnecessary data that does not serve this purpose.
+
+The geocoder will include the following data categories:
+
+- Division
+- Road
+- POI (Point of Interest)
+- Water
+- Infrastructure
+
+To improve search precision, multiple aliases can be generated for each Overture Maps feature. These aliases anticipate user input that may combine multiple locations to refine search results. For example, in the Netherlands, many streets are named "Kerkstraat." If a user searches for "Kerkstraat Amsterdam," the geocoder should prioritize "Kerkstraat" in Amsterdam as the top result. To achieve this, aliases like "Kerkstraat," "Kerkstraat {intersecting division.locality}," and "Kerkstraat {intersecting division.county}" are added. These aliases vary based on the class and subclass of the feature.
+
+Trigram matching allows for flexible searches. For instance, even if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam.
+
+Additionally, related road segments are merged into a single entry, enabling retrieval of the full road rather than fragmented segments. This approach reduces the likelihood of excessive high-matching results for the same road.
+
+Other cases can also be accommodated. For instance:
+
+A user searching for "A2" (a highway in the Netherlands) can find the correct result even though its name in Overture is "Rijksweg A2," thanks to aliases like "A2" and "Rijksweg A2."
+For entries with names like "'s-Hertogenbosch," a common alias "den bosch" can be added, as users are more likely to type the latter. These aliases are applied to all related entries and relationships.
+
+
+## Vectors?
+
+A test was also done with creating vectors for the aliases instead of trigram matching but since the input will not benefit much from semantics we can stick with trigram matching. Some other cons of vectors vs trigram matching for the geocoder:
+
+- Much more computation time to create the database
+- Much more storage space needed for the vectors, With a small test dataset 96MB vs 11MB
+- Cannot handle typos as well as trigram matching.
+- Does not handle swappable words as well as trigram matching.
+
+The performance looks roughly the same for both methods.
+
+## ToDo
+
+This is a first test and by no means a usable thing.
+
+- Add water and infrastructure data
+- Add API service
+- Reverse geocoding
+- Add more aliases
+- Filter based on bbox, class, subclass
+- Tool to take away installing deps, manual downloading and processing data
+
+## Getting started
+
+### Download & prepare data
+
+To download data we can use the overturemaps CLI tool and to process the data we use DuckDB. To install the CLI tool we can use pip.
 
 ```sh
-pip install onnxruntime-gpu
+pip install overturemaps
 ```
 
-Create a flattened dataset containing only the data we need.
-
-What is usefull information?
-- id
-- geometry
-- primary name
-- type (segment, poi, division, address, water)
-- subtype (country, neighborhood, track, street, etc)
-
-What is a parent in our context, let's say you want to search a street, how would you normally search this? I would search for the street name and the city name. So in the case of a street the parent would be the city. In the case of a city the parent would be the country. For highways there can be multiple parents but is not usefull anyway, you search for a highway like A2 you won't search by city/town.
-
-The same goes for Points of Interest, the parent would be the city/town (locality).
-
-## division-area
-
-In geocodeur we want to find be able to find divisions, what subtypes benefit from having a parent when searching for a division?
-region, neighborhood, locality, country
-
-### Columns
+To install DuckDB we can use the following commands.
 
 ```sh
-┌─────────────┬────────────────────────────────────────────────────────────────────────────────────┬─────────┬─────────┬─────────┬─────────┐
-│ column_name │                                    column_type                                     │  null   │   key   │ default │  extra  │
-│   varchar   │                                      varchar                                       │ varchar │ varchar │ varchar │ varchar │
-├─────────────┼────────────────────────────────────────────────────────────────────────────────────┼─────────┼─────────┼─────────┼─────────┤
-│ id          │ VARCHAR                                                                            │ YES     │         │         │         │
-│ geometry    │ BLOB                                                                               │ YES     │         │         │         │
-│ bbox        │ STRUCT(xmin FLOAT, xmax FLOAT, ymin FLOAT, ymax FLOAT)                             │ YES     │         │         │         │
-│ country     │ VARCHAR                                                                            │ YES     │         │         │         │
-│ version     │ INTEGER                                                                            │ YES     │         │         │         │
-│ sources     │ STRUCT(property VARCHAR, dataset VARCHAR, record_id VARCHAR, update_time VARCHAR…  │ YES     │         │         │         │
-│ subtype     │ VARCHAR                                                                            │ YES     │         │         │         │
-│ class       │ VARCHAR                                                                            │ YES     │         │         │         │
-│ names       │ STRUCT("primary" VARCHAR, common MAP(VARCHAR, VARCHAR), rules STRUCT(variant VAR…  │ YES     │         │         │         │
-│ region      │ VARCHAR                                                                            │ YES     │         │         │         │
-│ division_id │ VARCHAR                                                                            │ YES     │         │         │         │
-├─────────────┴────────────────────────────────────────────────────────────────────────────────────┴─────────┴─────────┴─────────┴─────────┤
-│ 11 rows                                                                                                                        6 columns │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-
-select distinct(subtype) from read_parquet('division_area.geoparquet');
-
-┌──────────────┐
-│   subtype    │
-│   varchar    │
-├──────────────┤
-│ country      │
-│ neighborhood │
-│ locality     │
-│ region       │
-│ microhood    │
-│ county       │
-└──────────────┘
-
-select distinct(class) from read_parquet('division_area.geoparquet');
-
-┌─────────┐
-│  class  │
-│ varchar │
-├─────────┤
-│ land    │
-└─────────┘
+curl --fail --location --progress-bar --output duckdb_cli-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && unzip duckdb_cli-linux-amd64.zip
 ```
 
+Now we can download all data from Overture Maps with a given bounding box using the `download` script. The script will download all data in the bounding box and store it in the `data/download` directory.
 
-country = Netherlands (country)
-region = Noord-Brabant (region)
-neighborhood = Zuid, Pettelaarpark, De Moerputten (neighborhood) (buurt)
-locality = 's-Hertogenbosch, Vught, Rosmalen (place)
-microhood = Zuidoost, West, Wilhelminaplein (district) (wijk)
-county = 's-Hertogenbosch, Vught, Boxtel (county/municipality)
-
-For the netherlands microhood does not seem to make much sense at the point we can combine neighborhood and microhood.
-
-## Parents
-
-Parents, what combination is likely to be used when searching for a division?
-- country -> None
-- neighborhood -> locality
-- locality -> county
-- county -> None
-
-## Query generation divisions
-
-```sql
-COPY (
-WITH divisions AS (
-    SELECT
-        id,
-        names.primary AS name,
-        geometry AS geom,
-        'division' AS class,
-        subtype AS subclass
-    FROM read_parquet('division_area.geoparquet')
-),
-relations AS (
-    SELECT
-        d.id,
-        l.names.primary AS relation_name
-    FROM divisions d
-    LEFT JOIN read_parquet('division_area.geoparquet') l
-    ON ST_Intersects(d.geom, l.geometry)
-    WHERE
-        (d.subclass = 'neighborhood' AND l.subtype = 'locality') OR
-        (d.subclass = 'locality' AND l.subtype = 'county')
-),
-aggregated_relations AS (
-    SELECT
-        d.id,
-        d.name,
-        ST_AsText(d.geom) AS geom,
-        d.class,
-        d.subclass,
-        STRING_AGG(DISTINCT r.relation_name, ';') FILTER (WHERE r.relation_name IS NOT NULL) AS relation
-    FROM divisions d
-    LEFT JOIN relations r
-    ON d.id = r.id
-    GROUP BY d.id, d.name, d.geom, d.class, d.subclass
-)
-SELECT
-    id,
-    name,
-    geom,
-    class,
-    subclass,
-    relation
-FROM aggregated_relations
-) TO 'geocodeur_division.geoparquet' (FORMAT 'PARQUET');
+```sh
+./scripts/download.sh 5.117491,51.598439,5.579449,51.821835
 ```
 
-## Segment
+We can now process the data to mold it into something we can use.
 
-```sql
-COPY (
-    WITH segments AS (
-        SELECT
-            id,
-            names.primary AS name,
-            geometry AS geom,
-            subtype AS class,
-            class AS subclass
-        FROM read_parquet('segment.geoparquet')
-        -- rail not realy usable, water is a line we will get waterbodies from a different dataset
-        WHERE subtype IN ('road')
-        AND names.primary IS NOT NULL
-    ),
-    relations AS (
-        SELECT
-            s.id,
-            l.names.primary AS relation_name
-        FROM segments s
-        LEFT JOIN read_parquet('division_area.geoparquet') l
-        ON ST_Intersects(s.geom, l.geometry)
-        WHERE
-            (s.subclass != 'motorway' AND l.subtype = 'locality') OR
-            (s.subclass != 'motorway' AND l.subtype = 'county')
-    ),
-    aggregated_relations AS (
-        SELECT
-            s.id,
-            s.name,
-            ST_AsText(s.geom) AS geom,
-            s.class,
-            s.subclass,
-            STRING_AGG(DISTINCT r.relation_name, ';') FILTER (WHERE r.relation_name IS NOT NULL) AS relation
-        FROM segments s
-        LEFT JOIN relations r
-        ON s.id = r.id
-        GROUP BY s.id, s.name, s.geom, s.class, s.subclass
-    )
-    SELECT
-        id,
-        name,
-        geom,
-        class,
-        subclass,
-        relation
-    FROM aggregated_relations
-) TO 'geocodeur_segment.geoparquet' (FORMAT 'PARQUET');
+```sh
+./scripts/process.sh
 ```
 
-```sql
--- overture can have multiple segments for a road we want to have the complete road
+### Load data into the database
 
-WITH RECURSIVE connected_segments(id, name, subclass, geom, relation) AS (
-    -- Base case: Select the initial segments
-    SELECT
-        s.id,
-        s.name,
-        s.subclass,
-        s.geom,
-        s.relation
-    FROM aggregated_relations s
-    WHERE s.id IS NOT NULL
+Start a local PostGIS database
 
-    UNION ALL
-
-    -- Recursive case: Connect segments that touch each other
-    SELECT
-        ANY_VALUE(s2.id) AS id,  -- Use ANY_VALUE to avoid grouping by id
-        cs.name,
-        cs.subclass,
-        ANY_VALUE(ST_Union(cs.geom, s2.geom)) AS geom,  -- Combine geometries using ST_Union
-        STRING_AGG(DISTINCT s2.relation, ';') AS relation
-    FROM connected_segments cs
-    JOIN aggregated_relations s2
-    ON ST_Touches(cs.geom, s2.geom) -- Ensure that they touch
-    AND cs.name = s2.name
-    AND cs.subclass = s2.subclass
-    AND cs.id != s2.id -- Prevent self-joining
-    GROUP BY cs.name, cs.subclass  -- Only group by name and subclass (no geom)
-),
-segments AS (
-    SELECT
-        id,
-        names.primary AS name,
-        geometry AS geom,
-        subtype AS class,
-        class AS subclass
-    FROM read_parquet('segment.geoparquet')
-    WHERE subtype IN ('road')
-    AND names.primary IS NOT NULL
-),
-relations AS (
-    SELECT
-        s.id,
-        l.names.primary AS relation_name
-    FROM segments s
-    LEFT JOIN read_parquet('division_area.geoparquet') l
-    ON ST_Intersects(s.geom, l.geometry)
-    WHERE
-        (s.subclass != 'motorway' AND l.subtype = 'locality') OR
-        (s.subclass != 'motorway' AND l.subtype = 'county')
-),
-aggregated_relations AS (
-    SELECT
-        s.id,
-        s.name,
-        s.geom AS geom,
-        s.class,
-        s.subclass,
-        STRING_AGG(DISTINCT r.relation_name, ';') FILTER (WHERE r.relation_name IS NOT NULL) AS relation
-    FROM segments s
-    LEFT JOIN relations r
-    ON s.id = r.id
-    GROUP BY s.id, s.name, s.geom, s.class, s.subclass
-),
-final_segments AS (
-    -- Final aggregation of all connected segments
-    SELECT
-        name,
-        geom,  -- Merge the geometries of connected segments
-        subclass,
-        STRING_AGG(DISTINCT relation, ';') AS relation
-    FROM connected_segments
-    GROUP BY name, geom, subclass
-)
--- Final output: Select the aggregated result
-SELECT
-    name,
-    geom,
-    subclass,
-    relation
-FROM final_segments
-WHERE name = 'Van Veldekekade';
+```sh
+docker compose up -d
 ```
+
+Create the tables and load data
+
+```sh
+go run main.go create
+```
+
+Test a query
+
+```sh
+go run main.go query "Adr poorters Vught"
+
+ID: 0871fa4b6affffff046ff9a382713452, Name: Adriaan Poortersstraat, Class: road, Subclass: residential, alias: Adriaan Poortersstraat Vught, Similarity: 0.548387
+ID: 0881fa4b6e7fffff047fefca39722950, Name: Poortlaan, Class: road, Subclass: residential, alias: Poortlaan Vught, Similarity: 0.458333
+ID: 0850345cbfffffff01ce7b770cbcd605, Name: Vughterpoort, Class: division, Subclass: neighborhood, alias: Vughterpoort Vught, Similarity: 0.434783
+ID: 0881fa4b463fffff047f67c7ffb17b1b, Name: Poirtersstraat, Class: road, Subclass: residential, alias: Poirtersstraat Vught, Similarity: 0.379310
+ID: 0861fa4b6fffffff046ffd18b6fe4bf4, Name: Postweg, Class: road, Subclass: unknown, alias: Postweg Vught, Similarity: 0.320000
+ID: 0891fa4b6a9bffff046fffbd97b71b83, Name: Postweg, Class: road, Subclass: tertiary, alias: Postweg Vught, Similarity: 0.320000
+ID: 08c1fa4b42b231ff047eff1228c9428a, Name: De Voort, Class: road, Subclass: track, alias: De Voort Vught, Similarity: 0.320000
+ID: 08b1fa4b6a9b4fff046fefb783b1e7d7, Name: Postweg, Class: road, Subclass: cycleway, alias: Postweg Vught, Similarity: 0.320000
+ID: 08f1fa4b6a04d3890322fa112c36e1fe, Name: Vught, Class: poi, Subclass: , alias: Vught Vught, Similarity: 0.315789
+ID: 085036a4ffffffff01d4415f1a3b6d42, Name: Vught, Class: division, Subclass: county, alias: Vught, Similarity: 0.315789
+```
+
+## Data
+
+### Division
+
+- Only divisions with a primary name, we cannot search for a division without a name so leave them out.
+- Add locality for neighbourhoods features
+- Add county for locality features
+
+### Road
+
+- Only segments with a primary name, we cannot search for a segment without a name so leave them out.
+- Only segments with a subtype road, tracks are not usefull for geocoding and water we will get from a different source since water are water segments and not water bodies.
+- Roads are split up in multiple segments merge them by name, class (overture) and connecting lines
+- Add relations for locality and county to the roads but not for motorways because this extra information is not usefull.
+
+### POI
+
+- Take all pois and do not filter on confidence for now
+- Add relations for locality to the pois
