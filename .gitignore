@@ -1,5 +1,9 @@
+# our data dir used for downloading and processing
 data/
+
+# build binaries
 main
+geocodeur
 
 # Binaries for programs and plugins
 *.exe
