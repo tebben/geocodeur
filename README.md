@@ -123,6 +123,16 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 - Roads are split up in multiple segments merge them by name, class (overture) and connecting lines
 - Add relations for locality and county to roads but exlude realtions for motorways since this does not make much sense.
 
+### Water
+
+- Only water with primary name
+- Subtype is most of the time the same as class and not helpfull use subtype as subclass
+- Features with lines are sometimes split up and also can represent the same feature, these need to be grouped and merged
+- Polygons are not directly split up but need to be grouped aswell when close and representing the same feature
+
+ToDo:
+ We have features 'duplicated' as lines and polygons, remove a line if it's within a polygon with the same name and subclass
+
 ### POI
 
 - Take all pois and do not filter on confidence for now
