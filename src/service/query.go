@@ -42,14 +42,23 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 					WHEN a.class = 'division' THEN 1
 					WHEN a.class = 'road' THEN 2
 					WHEN a.class = 'poi' THEN 3
-					ELSE 0
+					ELSE 100
 				END AS class_score,
 				CASE
 					WHEN a.subclass = 'locality' THEN 1
 					WHEN a.subclass = 'county' THEN 2
 					WHEN a.subclass = 'neighboorhood' THEN 3
 					WHEN a.subclass = 'microhood' THEN 4
-					ELSE 0
+					-- roads up to living_street the rest gets a high score
+					WHEN a.subclass = 'motorway' THEN 1
+					WHEN a.subclass = 'trunk' THEN 2
+					WHEN a.subclass = 'primary' THEN 3
+					WHEN a.subclass = 'secondary' THEN 4
+					WHEN a.subclass = 'tertiary' THEN 5
+					WHEN a.subclass = 'unclassified' THEN 6
+					WHEN a.subclass = 'residential' THEN 7
+					WHEN a.subclass = 'living_street' THEN 8
+					ELSE 100
 				END AS subclass_score,
 				ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY similarity(b.alias, $1) DESC) AS rnk
 			FROM %s a
