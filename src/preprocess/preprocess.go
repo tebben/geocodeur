@@ -11,6 +11,7 @@ import (
 func ProcessAll() {
 	process("division", DivisionQuery)
 	process("road", RoadQuery)
+	process("water", WaterQuery)
 	process("poi", PoiQuery)
 }
 

@@ -51,6 +51,7 @@ func CreateDB(connectionString string) {
 
 	processParquet(pool, "../data/download/geocodeur_division.geoparquet")
 	processParquet(pool, "../data/download/geocodeur_segment.geoparquet")
+	processParquet(pool, "../data/download/geocodeur_water.geoparquet")
 	processParquet(pool, "../data/download/geocodeur_poi.geoparquet")
 
 	fmt.Println("Reindexing tables")
