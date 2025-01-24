@@ -63,7 +63,14 @@ curl --fail --location --progress-bar --output duckdb_cli-linux-amd64.zip https:
 Now we can download all data from Overture Maps with a given bounding box using the `download` script. The script will download all data in the bounding box and store it in the `data/download` directory.
 
 ```sh
+# Test set 1
 ./scripts/download.sh 5.117491,51.598439,5.579449,51.821835
+
+# Test set 2 (1/6th of the Netherlands)
+./scripts/download.sh 4.60788273,51.5727799,6.12797006,52.1129134
+
+# Test set 3 (Netherlands and big part of Belgium and small patch of Germany)
+./scripts/download.sh 3.1624817624420167,50.76012028429577,7.274625587715649,53.50694358074323
 ```
 
 We can now process the data to mold it into something we can use.
@@ -125,6 +132,7 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 
 #### Solve
 
+- Motorways are a big mess, inconsistent naming and alot of segments without a name
 - Subtypes are not always that good, for instance we have a residential road with a road that should connect to it with the same name but the segment is unclassified resulting in 2 roads.
 - Sometimes roads are grouped but there is another road in between, should this be 1 road or 2 roads?
 
