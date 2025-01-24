@@ -120,8 +120,13 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 
 - Only segments with a primary name, we cannot search for a segment without a name so leave them out.
 - Only segments with a subtype road. Tracks are not usefull for geocoding and water we will get from a different source since water features are segments and not water bodies.
-- Roads are split up in multiple segments merge them by name, class (overture) and connecting lines
+- Roads are split up in multiple segments merge them by name, class (overture) and group created from union of buffered roads.
 - Add relations for locality and county to roads but exlude realtions for motorways since this does not make much sense.
+
+#### Solve
+
+- Subtypes are not always that good, for instance we have a residential road with a road that should connect to it with the same name but the segment is unclassified resulting in 2 roads.
+- Sometimes roads are grouped but there is another road in between, should this be 1 road or 2 roads?
 
 ### Water
 
@@ -130,8 +135,9 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 - Features with lines are sometimes split up and also can represent the same feature, these need to be grouped and merged
 - Polygons are not directly split up but need to be grouped aswell when close and representing the same feature
 
-ToDo:
- We have features 'duplicated' as lines and polygons, remove a line if it's within a polygon with the same name and subclass
+#### Solve
+
+We have features 'duplicated' as lines and polygons, remove a line if it's within a polygon with the same name and subclass
 
 ### POI
 
