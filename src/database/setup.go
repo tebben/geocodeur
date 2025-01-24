@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,8 @@ var truncations = []string{
 	"Rijksweg",
 }
 
+var counter uint64
+
 type Record struct {
 	ID       string `parquet:"name=id, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY, repetitiontype=OPTIONAL"`
 	Name     string `parquet:"name=name, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY, repetitiontype=OPTIONAL"`
@@ -33,10 +36,19 @@ type Record struct {
 	Relation string `parquet:"name=relation, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY, repetitiontype=OPTIONAL"`
 }
 
+func getNextID() uint64 {
+	return atomic.AddUint64(&counter, 1)
+}
+
 func CreateDB(connectionString string) {
 	pool, err := GetDBPool("geocodeur", connectionString)
 	if err != nil {
 		log.Fatalf("Failed to get database pool: %v", err)
+	}
+
+	err = configureDatabase(pool)
+	if err != nil {
+		log.Fatalf("Failed to configure database: %v", err)
 	}
 
 	err = createTableOverture(pool)
@@ -113,7 +125,8 @@ func processParquet(pool *pgxpool.Pool, path string) {
 			defer tx.Rollback(context.Background())
 
 			for _, rec := range records {
-				err := addOvertureFeature(tx, rec)
+				id := getNextID()
+				err := addOvertureFeature(tx, rec, id)
 
 				if err != nil {
 					log.Printf("Failed to insert record: %v", err)
@@ -128,25 +141,25 @@ func processParquet(pool *pgxpool.Pool, path string) {
 						}
 
 						alias := rec.Name + " " + relation
-						addAlias(tx, rec.ID, alias)
+						addAlias(tx, rec.ID, alias, id)
 
 						// Add entry for relation aliases
 						for name, alias := range aliases {
 							if relation == name {
 								aliasEmbedding := rec.Name + " " + alias
-								addAlias(tx, rec.ID, aliasEmbedding)
+								addAlias(tx, rec.ID, aliasEmbedding, id)
 							}
 						}
 					}
 				}
 
 				// Add name as alias
-				addAlias(tx, rec.ID, rec.Name)
+				addAlias(tx, rec.ID, rec.Name, id)
 
 				// Add aliases for name aliases
 				for name, alias := range aliases {
 					if rec.Name == name {
-						addAlias(tx, rec.ID, alias)
+						addAlias(tx, rec.ID, alias, id)
 					}
 				}
 
@@ -154,7 +167,7 @@ func processParquet(pool *pgxpool.Pool, path string) {
 				for _, truncation := range truncations {
 					if strings.Contains(rec.Name, truncation) {
 						alias := strings.Trim(strings.Replace(rec.Name, truncation, "", 1), " ")
-						addAlias(tx, rec.ID, alias)
+						addAlias(tx, rec.ID, alias, id)
 					}
 				}
 
@@ -169,19 +182,21 @@ func processParquet(pool *pgxpool.Pool, path string) {
 
 	wg.Wait()
 
-	fmt.Printf("Processed %s\n", path)
+	fmt.Printf("Inserted %s\n", path)
 }
 
-func addOvertureFeature(tx pgx.Tx, rec Record) error {
-	query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES (decode($1, 'hex'), $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326))`, TABLE_OVERTURE)
-	_, err := tx.Exec(context.Background(), query, rec.ID, rec.Name, rec.Class, rec.Subclass, rec.Relation, rec.Geom)
+func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
+	//query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES (decode($1, 'hex'), $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326))`, TABLE_OVERTURE)
+	query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES ($1, $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326));`, TABLE_OVERTURE)
+	_, err := tx.Exec(context.Background(), query, recordId, rec.Name, rec.Class, rec.Subclass, rec.Relation, rec.Geom)
 
 	return err
 }
 
-func addAlias(tx pgx.Tx, id, alias string) error {
-	query := fmt.Sprintf(`INSERT INTO %s (id, alias) VALUES (decode($1, 'hex'), $2)`, TABLE_SEARCH)
-	_, err := tx.Exec(context.Background(), query, id, alias)
+func addAlias(tx pgx.Tx, id, alias string, recordId uint64) error {
+	//query := fmt.Sprintf(`INSERT INTO %s (id, alias) VALUES (decode($1, 'hex'), $2)`, TABLE_SEARCH)
+	query := fmt.Sprintf(`INSERT INTO %s (id, alias) VALUES ($1, $2)`, TABLE_SEARCH)
+	_, err := tx.Exec(context.Background(), query, recordId, alias)
 
 	return err
 }
@@ -212,15 +227,19 @@ func vacuum(pool *pgxpool.Pool) error {
 	return nil
 }
 
+func configureDatabase(pool *pgxpool.Pool) error {
+	_, err := pool.Exec(context.Background(), "ALTER SYSTEM SET work_mem = '16MB';")
+	return err
+}
+
 func createTableOverture(pool *pgxpool.Pool) error {
 	query := fmt.Sprintf(`
 		CREATE EXTENSION IF NOT EXISTS postgis;
 
-		DROP TABLE IF EXISTS %[1]s;
+		DROP TABLE IF EXISTS %[1]s CASCADE;
 
 		CREATE TABLE %[1]s (
-			--id VARCHAR(32) PRIMARY KEY,
-			id BYTEA PRIMARY KEY,
+			id BIGINT PRIMARY KEY,
 			name TEXT,
 			class TEXT,
 			subclass TEXT,
@@ -243,13 +262,13 @@ func createTableSearch(pool *pgxpool.Pool) error {
 		DROP INDEX IF EXISTS idx_%[1]s_id;
 
         CREATE TABLE %[1]s (
-			id BYTEA,
+			id BIGINT,
             alias TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
-		CREATE INDEX IF NOT EXISTS idx_%[1]s_id ON %[1]s (id);
-    `, TABLE_SEARCH)
+		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_id FOREIGN KEY (id) REFERENCES %[2]s (id) ON DELETE CASCADE;
+    `, TABLE_SEARCH, TABLE_OVERTURE)
 
 	_, err := pool.Exec(context.Background(), query)
 	return err

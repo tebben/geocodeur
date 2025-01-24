@@ -7,21 +7,42 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tebben/geocodeur/database"
 	"github.com/tebben/geocodeur/preprocess"
+	"github.com/tebben/geocodeur/server"
 	"github.com/tebben/geocodeur/service"
 	"github.com/tebben/geocodeur/settings"
 )
 
+func initLogger(config settings.Config) {
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.InfoLevel)
+	if config.Server.Debug {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: false,
+		FullTimestamp: true,
+	})
+}
+
 func main() {
-	settings.InitializeConfig()
+	err := settings.InitializeConfig()
+	if err != nil {
+		log.Fatalf("Failed to initialize configuration: %v", err)
+	}
+
 	config := settings.GetConfig()
+	initLogger(config)
 
 	command := os.Args[1]
 	if command == "create" {
-		database.CreateDB(config.ConnectionString)
+		database.CreateDB(config.Database.ConnectionString)
 	} else if command == "query" {
 		query(config)
 	} else if command == "process" {
 		process()
+	} else if command == "server" {
+		server.Start(config)
 	} else {
 		log.Fatalf("Unknown command")
 	}
@@ -29,7 +50,7 @@ func main() {
 
 func query(config settings.Config) {
 	timeStart := time.Now()
-	results, err := service.Geocode(config.ConnectionString, config.PGTRGMTreshold, os.Args[2])
+	results, err := service.Geocode(config.Database.ConnectionString, config.API.PGTRGMTreshold, os.Args[2])
 	if err != nil {
 		log.Fatalf("Failed to query database: %v", err)
 	}
