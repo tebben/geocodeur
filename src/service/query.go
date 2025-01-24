@@ -3,16 +3,18 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/tebben/geocodeur/database"
 )
 
 type GeocodeResult struct {
-	Name       string
-	Class      string
-	Subclass   string
-	Alias      string
-	Similarity float64
+	Name       string  `json:"name"`
+	Class      string  `json:"class"`
+	Subclass   string  `json:"subclass"`
+	Divisions  string  `json:"divisions"`
+	Alias      string  `json:"alias"`
+	Similarity float64 `json:"similarity"`
 }
 
 func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]GeocodeResult, error) {
@@ -26,16 +28,13 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 		pool.Exec(context.Background(), fmt.Sprintf("SET pg_trgm.similarity_threshold = %v;", pgtrgmTreshold))
 	}
 
-	// Tested naive query:
-	// fetch 100+ rows or more and then merging with same id and then sorting by similarity
-	// then taking top 10, this does not improve performance that much and does not respect
-	// the limit if many same ids are present for the query
 	query := fmt.Sprintf(`
 	WITH ranked_aliases AS (
 			SELECT
 				a.name,
 				a.class,
 				a.subclass,
+				array_to_string(a.divisions, ',') AS divisions,
 				b.alias,
 				similarity(b.alias, $1) AS sim,
 				CASE
@@ -65,7 +64,7 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 			JOIN %s b ON a.id = b.id
 			WHERE b.alias %% $1
 		)
-		SELECT name, class, subclass, alias, sim
+		SELECT name, class, subclass, divisions, alias, sim
 		FROM ranked_aliases
 		WHERE rnk = 1
 		ORDER BY sim desc, class_score asc, subclass_score asc
@@ -79,13 +78,15 @@ func Geocode(connectionString string, pgtrgmTreshold float64, input string) ([]G
 
 	var results []GeocodeResult
 	for rows.Next() {
-		var name, class, subclass, alias string
+		var name, class, subclass, divisions, alias string
 		var sim float64
-		if err := rows.Scan(&name, &class, &subclass, &alias, &sim); err != nil {
+		if err := rows.Scan(&name, &class, &subclass, &divisions, &alias, &sim); err != nil {
 			return nil, err
 		}
 
-		results = append(results, GeocodeResult{name, class, subclass, alias, sim})
+		sim = math.Round(sim*1000) / 1000
+
+		results = append(results, GeocodeResult{name, class, subclass, divisions, alias, sim})
 	}
 
 	return results, nil
