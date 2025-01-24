@@ -20,10 +20,12 @@ var DivisionQuery = `
             l.names.primary AS relation_name
         FROM divisions d
         LEFT JOIN read_parquet('%DATADIR%division_area.geoparquet') l
-        ON ST_Intersects(d.geom, l.geometry)
+        ON ST_Contains(l.geometry, ST_Centroid(d.geom))
         WHERE
             (d.subclass = 'neighborhood' AND l.subtype = 'locality') OR
-            (d.subclass = 'locality' AND l.subtype = 'county')
+            (d.subclass = 'microhood' AND l.subtype = 'locality') OR
+            (d.subclass = 'locality' AND l.subtype = 'county') OR
+            (d.subclass = 'county' AND l.subtype = 'region')
     ),
     aggregated_relations AS (
         SELECT
