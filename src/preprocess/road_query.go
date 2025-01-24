@@ -73,6 +73,8 @@ COPY (
             a.subtype = 'road'
         AND
             names.primary IS NOT NULL
+        OR
+            a.class = 'motorway'
     ),
     merged AS (
         SELECT
