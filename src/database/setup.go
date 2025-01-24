@@ -173,8 +173,8 @@ func processParquet(pool *pgxpool.Pool, path string) {
 }
 
 func addOvertureFeature(tx pgx.Tx, rec Record) error {
-	query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, geom) VALUES (decode($1, 'hex'), $2, $3, $4, ST_GeomFromText($5, 4326))`, TABLE_OVERTURE)
-	_, err := tx.Exec(context.Background(), query, rec.ID, rec.Name, rec.Class, rec.Subclass, rec.Geom)
+	query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES (decode($1, 'hex'), $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326))`, TABLE_OVERTURE)
+	_, err := tx.Exec(context.Background(), query, rec.ID, rec.Name, rec.Class, rec.Subclass, rec.Relation, rec.Geom)
 
 	return err
 }
@@ -224,6 +224,7 @@ func createTableOverture(pool *pgxpool.Pool) error {
 			name TEXT,
 			class TEXT,
 			subclass TEXT,
+			divisions TEXT[],
 			geom geometry(Geometry, 4326)
 		);
 	`, TABLE_OVERTURE)
