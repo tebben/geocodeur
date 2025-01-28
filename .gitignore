@@ -1,6 +1,9 @@
 # our data dir used for downloading and processing
 data/
 
+# load config
+config/geocodeur.load.conf
+
 # build binaries
 main
 geocodeur
