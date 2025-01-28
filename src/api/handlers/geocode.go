@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tebben/geocodeur/errors"
@@ -28,9 +30,13 @@ func GeocodeHandler(config settings.Config) http.HandlerFunc {
 			return
 		}
 
-		timeStart := time.Now()
+		geocodeOptions, apiError := createGeocoderOptions(config, r)
+		if apiError != nil {
+			HandleError(w, apiError)
+			return
+		}
 
-		geocodeOptions := service.NewGeocodeOptions()
+		timeStart := time.Now()
 		results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, query)
 		if err != nil {
 			apiError := errors.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Error", "test"), nil)
@@ -53,4 +59,58 @@ func GeocodeHandler(config settings.Config) http.HandlerFunc {
 			http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 		}
 	}
+}
+
+func createGeocoderOptions(config settings.Config, r *http.Request) (service.GeocodeOptions, *errors.APIError) {
+	limit, err := getLimit(r)
+	if err != nil {
+		return service.GeocodeOptions{}, errors.NewAPIError(http.StatusBadRequest, err.Error(), nil)
+	}
+
+	classes, err := getClasses(r)
+	if err != nil {
+		return service.GeocodeOptions{}, errors.NewAPIError(http.StatusBadRequest, err.Error(), nil)
+	}
+
+	return service.NewGeocodeOptions(config.API.PGTRGMTreshold, limit, classes), nil
+}
+
+func getClasses(r *http.Request) ([]service.Class, error) {
+	qClass := r.URL.Query().Get("class")
+
+	if qClass != "" {
+		splitClasses := strings.Split(qClass, ",")
+		classes := make([]service.Class, len(splitClasses))
+		for i, v := range splitClasses {
+			class, err := service.StringToClass(strings.ToLower(v))
+			if err != nil {
+				return nil, err
+			}
+
+			classes[i] = class
+		}
+
+		return classes, nil
+	}
+
+	return nil, nil
+}
+
+func getLimit(r *http.Request) (uint16, error) {
+	qLimit := r.URL.Query().Get("limit")
+
+	if qLimit != "" {
+		limit, err := strconv.ParseUint(qLimit, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("Invalid limit: %s", qLimit)
+		}
+
+		if limit > 100 {
+			return 0, fmt.Errorf("Limit exceeds maximum of 100")
+		}
+
+		return uint16(limit), nil
+	}
+
+	return 10, nil
 }

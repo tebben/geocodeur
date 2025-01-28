@@ -2,21 +2,24 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/tebben/geocodeur/database"
+	"github.com/tebben/geocodeur/settings"
 )
 
 type GeocodeResult struct {
-	Name       string  `json:"name"`
-	Class      string  `json:"class"`
-	Subclass   string  `json:"subclass"`
-	Divisions  string  `json:"divisions"`
-	Alias      string  `json:"alias"`
-	SearchType string  `json:"searchType"`
-	Similarity float64 `json:"similarity"`
+	Name       string          `json:"name"`
+	Class      string          `json:"class"`
+	Subclass   string          `json:"subclass"`
+	Divisions  string          `json:"divisions"`
+	Alias      string          `json:"alias"`
+	SearchType string          `json:"searchType"`
+	Similarity float64         `json:"similarity"`
+	Geom       json.RawMessage `json:"geom"`
 }
 
 type Class string
@@ -28,6 +31,21 @@ const (
 	Poi      Class = "poi"
 )
 
+func StringToClass(s string) (Class, error) {
+	switch s {
+	case string(Division):
+		return Division, nil
+	case string(Road):
+		return Road, nil
+	case string(Water):
+		return Water, nil
+	case string(Poi):
+		return Poi, nil
+	default:
+		return "", fmt.Errorf("class %s not found", s)
+	}
+}
+
 type GeocodeOptions struct {
 	PgtrgmTreshold float64
 	Limit          uint16
@@ -36,7 +54,7 @@ type GeocodeOptions struct {
 
 func (g GeocodeOptions) ClassesToSqlArray() string {
 	classes := g.Classes
-	if len(classes) == 0 {
+	if classes == nil || len(classes) == 0 {
 		classes = []Class{Division, Road, Water, Poi}
 	}
 
@@ -49,11 +67,11 @@ func (g GeocodeOptions) ClassesToSqlArray() string {
 }
 
 // new GeocodeOptions with default values
-func NewGeocodeOptions() GeocodeOptions {
+func NewGeocodeOptions(pgtrmTreshold float64, limit uint16, classes []Class) GeocodeOptions {
 	return GeocodeOptions{
-		PgtrgmTreshold: 0.3,
-		Limit:          10,
-		Classes:        []Class{Division, Road, Water, Poi},
+		PgtrgmTreshold: pgtrmTreshold,
+		Limit:          limit,
+		Classes:        classes,
 	}
 }
 
@@ -65,13 +83,11 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 
 	input = strings.ToLower(input)
 
-	// Speed up queries by setting the similarity threshold, default is 0.3
-	if options.PgtrgmTreshold != 0.3 {
+	if options.PgtrgmTreshold != settings.GetConfig().API.PGTRGMTreshold {
 		pool.Exec(context.Background(), fmt.Sprintf("SET pg_trgm.similarity_threshold = %v;", options.PgtrgmTreshold))
 	}
 
 	classesIn := options.ClassesToSqlArray()
-
 	query := fmt.Sprintf(`
 	WITH fts AS (
 		SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
@@ -102,9 +118,9 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 			a.subclass,
 			array_to_string(a.divisions, ',') AS divisions,
 			b.alias,
-			a.geom,
 			b.sim,
 			b.search,
+			ST_AsGeoJSON(a.geom) as geom,
 			CASE
 				WHEN a.class = 'division' THEN 1
 				WHEN a.class = 'water' THEN 2
@@ -132,7 +148,7 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 		FROM %s a
 		JOIN alias_results b ON a.id = b.feature_id
 	)
-	SELECT name, class, subclass, divisions, alias, search, sim
+	SELECT name, class, subclass, divisions, alias, search, sim, geom
 	FROM ranked_aliases
 	WHERE rnk = 1
 	AND class IN %s
@@ -147,14 +163,14 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 
 	var results []GeocodeResult
 	for rows.Next() {
-		var name, class, subclass, divisions, alias, search string
+		var name, class, subclass, divisions, alias, search, geom string
 		var sim float64
-		if err := rows.Scan(&name, &class, &subclass, &divisions, &alias, &search, &sim); err != nil {
+		if err := rows.Scan(&name, &class, &subclass, &divisions, &alias, &search, &sim, &geom); err != nil {
 			return nil, err
 		}
 
 		sim = math.Round(sim*1000) / 1000
-		results = append(results, GeocodeResult{name, class, subclass, divisions, alias, search, sim})
+		results = append(results, GeocodeResult{name, class, subclass, divisions, alias, search, sim, json.RawMessage(geom)})
 	}
 
 	return results, nil

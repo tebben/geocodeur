@@ -50,8 +50,7 @@ func main() {
 
 func query(config settings.Config) {
 	timeStart := time.Now()
-	geocodeOptions := service.NewGeocodeOptions()
-	geocodeOptions.Classes = []service.Class{service.Division, service.Road, service.Water, service.Poi}
+	geocodeOptions := service.NewGeocodeOptions(config.API.PGTRGMTreshold, 10, nil)
 	results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, os.Args[2])
 	if err != nil {
 		log.Fatalf("Failed to query database: %v", err)
