@@ -50,15 +50,17 @@ func main() {
 
 func query(config settings.Config) {
 	timeStart := time.Now()
-	results, err := service.Geocode(config.Database.ConnectionString, config.API.PGTRGMTreshold, os.Args[2])
+	geocodeOptions := service.NewGeocodeOptions()
+	geocodeOptions.Classes = []service.Class{service.Division, service.Road, service.Water, service.Poi}
+	results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, os.Args[2])
 	if err != nil {
 		log.Fatalf("Failed to query database: %v", err)
 	}
 	timeEnd := time.Now()
 
 	for _, result := range results {
-		log.Infof("Name: %s, Class: %s, Subclass: %s, Alias: %s, Similarity: %f",
-			result.Name, result.Class, result.Subclass, result.Alias, result.Similarity)
+		log.Infof("Name: %s, Class: %s, Subclass: %s, Alias: %s, Similarity: %f, Search: %s",
+			result.Name, result.Class, result.Subclass, result.Alias, result.Similarity, result.SearchType)
 	}
 
 	log.Infof("-----------\n")

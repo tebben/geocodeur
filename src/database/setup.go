@@ -186,7 +186,6 @@ func processParquet(pool *pgxpool.Pool, path string) {
 }
 
 func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
-	//query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES (decode($1, 'hex'), $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326))`, TABLE_OVERTURE)
 	query := fmt.Sprintf(`INSERT INTO %s (id, name, class, subclass, divisions, geom) VALUES ($1, $2, $3, $4, string_to_array($5, ';'), ST_GeomFromText($6, 4326));`, TABLE_OVERTURE)
 	_, err := tx.Exec(context.Background(), query, recordId, rec.Name, rec.Class, rec.Subclass, rec.Relation, rec.Geom)
 
@@ -194,8 +193,8 @@ func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
 }
 
 func addAlias(tx pgx.Tx, id, alias string, recordId uint64) error {
-	//query := fmt.Sprintf(`INSERT INTO %s (id, alias) VALUES (decode($1, 'hex'), $2)`, TABLE_SEARCH)
-	query := fmt.Sprintf(`INSERT INTO %s (id, alias) VALUES ($1, $2)`, TABLE_SEARCH)
+	alias = strings.ToLower(alias)
+	query := fmt.Sprintf(`INSERT INTO %s (feature_id, alias) VALUES ($1, $2)`, TABLE_SEARCH)
 	_, err := tx.Exec(context.Background(), query, recordId, alias)
 
 	return err
@@ -213,7 +212,6 @@ func reindex(pool *pgxpool.Pool) error {
 }
 
 func vacuum(pool *pgxpool.Pool) error {
-	// Vacuum each table separately to avoid transaction block errors
 	_, err := pool.Exec(context.Background(), fmt.Sprintf("VACUUM FULL %s;", TABLE_OVERTURE))
 	if err != nil {
 		return fmt.Errorf("failed to vacuum table %s: %v", TABLE_OVERTURE, err)
@@ -228,7 +226,7 @@ func vacuum(pool *pgxpool.Pool) error {
 }
 
 func configureDatabase(pool *pgxpool.Pool) error {
-	_, err := pool.Exec(context.Background(), "ALTER SYSTEM SET work_mem = '16MB';")
+	_, err := pool.Exec(context.Background(), "ALTER SYSTEM SET work_mem = '256MB';")
 	return err
 }
 
@@ -259,15 +257,20 @@ func createTableSearch(pool *pgxpool.Pool) error {
 
         DROP TABLE IF EXISTS %[1]s;
         DROP INDEX IF EXISTS idx_%[1]s_trgm;
-		DROP INDEX IF EXISTS idx_%[1]s_id;
+		DROP INDEX IF EXISTS idx_%[1]s_fts;
 
         CREATE TABLE %[1]s (
-			id BIGINT,
+			feature_id BIGINT,
             alias TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
-		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_id FOREIGN KEY (id) REFERENCES %[2]s (id) ON DELETE CASCADE;
+		-- index for trgm search, gin > gist for our case, gist can be very slow
+		CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
+
+		-- index for FTS search
+		CREATE INDEX idx_%[1]s_fts ON public.overture_search USING GIN (to_tsvector('simple', alias));
+
+		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[2]s (id) ON DELETE CASCADE;
     `, TABLE_SEARCH, TABLE_OVERTURE)
 
 	_, err := pool.Exec(context.Background(), query)
