@@ -51,30 +51,49 @@ CREATE INDEX road_groups_geom_idx ON road_groups USING RTREE (geom);
 -- 4. Aggregate the locality or county the road is in.
 -- 5. Write the result to a new parquet file.
 COPY (
-    WITH features AS (
+    WITH clip AS (
+        SELECT
+            CASE
+            WHEN '%COUNTRY%' != '' THEN (SELECT geometry from read_parquet('%DATADIR%division_area.geoparquet') where lower(names.primary) = '%COUNTRY%' and subtype = 'country')
+            ELSE ST_GeomFromText('POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))')
+            END AS geom
+    ),
+    clipped_features AS (
         SELECT
             a.id,
             a.names.primary as name,
             a.subtype AS class,
             a.class AS subclass,
             a.geometry AS geom,
-            b.id as group_id
         FROM
-            read_parquet('%DATADIR%segment.geoparquet') AS a
-        LEFT JOIN
-            road_groups AS b
-        ON
-            ST_Within(ST_Centroid(a.geometry), b.geom)
-        AND
-            a.class = b.subclass
-        AND
-            a.names.primary = b.name
+            read_parquet('%DATADIR%segment.geoparquet') AS a, clip AS b
         WHERE
+            ST_Intersects(a.geometry, b.geom)
+        AND
             a.subtype = 'road'
         AND
             names.primary IS NOT NULL
         OR
             a.class = 'motorway'
+    ),
+    features AS (
+        SELECT
+            a.id,
+            a.name,
+            a.class,
+            a.subclass,
+            a.geom,
+            b.id as group_id
+        FROM
+            clipped_features AS a
+        LEFT JOIN
+            road_groups AS b
+        ON
+            ST_Within(ST_Centroid(a.geom), b.geom)
+        AND
+            a.subclass = b.subclass
+        AND
+            a.name = b.name
     ),
     merged AS (
         SELECT

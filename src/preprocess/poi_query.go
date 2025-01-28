@@ -5,14 +5,23 @@ INSTALL spatial;
 LOAD spatial;
 
 COPY (
-    WITH pois AS (
+    WITH clip AS (
         SELECT
-            id,
-            names.primary AS name,
-            geometry AS geom,
+            CASE
+            WHEN '%COUNTRY%' != '' THEN (SELECT geometry from read_parquet('%DATADIR%division_area.geoparquet') where lower(names.primary) = '%COUNTRY%' and subtype = 'country')
+            ELSE ST_GeomFromText('POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))')
+            END AS geom
+    ),
+    pois AS (
+        SELECT
+            a.id,
+            a.names.primary AS name,
+            a.geometry AS geom,
             'poi' AS class,
             NULL AS subclass
-        FROM read_parquet('%DATADIR%place.geoparquet')
+        FROM read_parquet('%DATADIR%place.geoparquet') AS a, clip AS b
+        WHERE
+            ST_Intersects(a.geometry, b.geom)
     ),
     relations AS (
         SELECT

@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -15,6 +16,7 @@ type Config struct {
 	Server   ServerConfig   `json:"server"`
 	API      APIConfig      `json:"api"`
 	Database DatabaseConfig `json:"database"`
+	Process  ProcessConfig  `json:"process"`
 }
 
 type ServerConfig struct {
@@ -30,6 +32,7 @@ type APIConfig struct {
 }
 
 type DatabaseConfig struct {
+	Schema           string `json:"schema"`
 	ConnectionString string `json:"connectionString"`
 }
 
@@ -37,6 +40,11 @@ type CorsConfig struct {
 	AllowOrigins []string `json:"allowOrigins"`
 	AllowHeaders []string `json:"allowHeaders"`
 	AllowMethods []string `json:"allowMethods"`
+}
+
+type ProcessConfig struct {
+	Folder      string `json:"folder"`
+	CountryClip string `json:"countryClip"`
 }
 
 // isOriginAllowed checks if the provided origin is allowed based on the CorsConfig settings.
@@ -82,7 +90,7 @@ func getConfigLocation() string {
 func InitializeConfig() error {
 	err := loadConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load configuration: %v", err)
 	}
 
 	return nil

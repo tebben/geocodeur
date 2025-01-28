@@ -5,14 +5,23 @@ var DivisionQuery = `
     LOAD spatial;
 
     COPY (
-    WITH divisions AS (
+    WITH clip AS (
         SELECT
-            id,
-            names.primary AS name,
-            geometry AS geom,
+            CASE
+            WHEN '%COUNTRY%' != '' THEN (SELECT geometry from read_parquet('%DATADIR%division_area.geoparquet') where lower(names.primary) = '%COUNTRY%' and subtype = 'country')
+            ELSE ST_GeomFromText('POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))')
+            END AS geom
+    ),
+    divisions AS (
+        SELECT
+            a.id,
+            a.names.primary AS name,
+            a.geometry AS geom,
             'division' AS class,
-            subtype AS subclass
-        FROM read_parquet('%DATADIR%division_area.geoparquet')
+            a.subtype AS subclass
+        FROM read_parquet('%DATADIR%division_area.geoparquet') AS a, clip AS b
+        WHERE
+            ST_Intersects(a.geometry, b.geom)
     ),
     relations AS (
         SELECT

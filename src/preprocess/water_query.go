@@ -114,26 +114,45 @@ CREATE INDEX water_groups_geom_idx ON water_groups USING RTREE (geom);
 -- 4. Aggregate the locality or county the road is in.
 -- 5. Write the result to a new parquet file.
 COPY (
-    WITH features AS (
+    WITH clip AS (
+        SELECT
+            CASE
+            WHEN '%COUNTRY%' != '' THEN (SELECT geometry from read_parquet('%DATADIR%division_area.geoparquet') where lower(names.primary) = '%COUNTRY%' and subtype = 'country')
+            ELSE ST_GeomFromText('POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))')
+            END AS geom
+    ),
+    clipped_features AS (
         SELECT
             a.id,
             a.names.primary as name,
             'water' AS class,
             a.class AS subclass,
-            a.geometry AS geom,
+            a.geometry AS geom
+        FROM
+            read_parquet('%DATADIR%water.geoparquet') AS a, clip AS b
+        WHERE
+            ST_Intersects(a.geometry, b.geom)
+        AND
+            names.primary IS NOT NULL
+    ),
+    features AS (
+        SELECT
+            a.id,
+            a.name,
+            a.class,
+            a.subclass,
+            a.geom,
             b.id as group_id
         FROM
-            read_parquet('%DATADIR%water.geoparquet') AS a
+            clipped_features AS a
         LEFT JOIN
             water_groups AS b
         ON
-            ST_Within(ST_Centroid(a.geometry), b.geom)
+            ST_Within(ST_Centroid(a.geom), b.geom)
         AND
-            a.class = b.subclass
+            a.subclass = b.subclass
         AND
-            a.names.primary = b.name
-        WHERE
-            names.primary IS NOT NULL
+            a.name = b.name
     ),
     merged_features AS (
         SELECT
