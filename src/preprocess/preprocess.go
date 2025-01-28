@@ -6,6 +6,7 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb"
 	log "github.com/sirupsen/logrus"
+	"github.com/tebben/geocodeur/settings"
 )
 
 func ProcessAll() {
@@ -18,7 +19,10 @@ func ProcessAll() {
 func process(name string, query string) {
 	log.Infof("Processing data: %s", name)
 
-	query = strings.ReplaceAll(query, "%DATADIR%", "../data/download/")
+	config := settings.GetConfig()
+
+	query = strings.ReplaceAll(query, "%DATADIR%", config.Process.Folder)
+	query = strings.ReplaceAll(query, "%COUNTRY%", strings.ToLower(config.Process.CountryClip))
 
 	db, err := getDuckDB()
 	if err != nil {
