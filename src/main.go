@@ -41,7 +41,7 @@ func main() {
 
 	command := os.Args[1]
 	if command == "create" {
-		database.CreateDB(config.Database.ConnectionString, config.Database.Schema)
+		database.CreateDB(config)
 	} else if command == "query" {
 		query(config)
 	} else if command == "process" {
