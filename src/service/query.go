@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/tebben/geocodeur/database"
 	"github.com/tebben/geocodeur/settings"
 )
@@ -81,90 +82,40 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 		return nil, err
 	}
 
+	// Everything for search is lower case so we lowercase the input query
 	input = strings.ToLower(input)
 
+	// If incoming request has a different pg_trgm similarity threshold than the current one, set it
 	if options.PgtrgmTreshold != settings.GetConfig().API.PGTRGMTreshold {
 		pool.Exec(context.Background(), fmt.Sprintf("SET pg_trgm.similarity_threshold = %v;", options.PgtrgmTreshold))
 	}
 
-	classesIn := options.ClassesToSqlArray()
-	query := fmt.Sprintf(`
-	WITH fts AS (
-		SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
-		FROM %s AS a
-		WHERE to_tsvector('simple', a.alias) @@ to_tsquery('simple',
-			replace($1, ' ', ':* & ') || ':*'
-		)
-		ORDER BY sim
-	),
-	trgm AS (
-		SELECT feature_id, alias, similarity(a.alias, $1) AS sim, 'trgm' as search
-		FROM %s AS a
-		WHERE a.alias %% $1
-		ORDER BY a.alias <-> $1
-	),
-	alias_results AS (
-		SELECT *
-		FROM fts
-		UNION ALL
-		SELECT *
-		FROM trgm
-		WHERE NOT EXISTS (SELECT 1 FROM fts)
-	), ranked_aliases AS (
-		SELECT
-			a.id,
-			a.name,
-			a.class,
-			a.subclass,
-			array_to_string(a.divisions, ',') AS divisions,
-			b.alias,
-			b.sim,
-			b.search,
-			ST_AsGeoJSON(a.geom) as geom,
-			CASE
-				WHEN a.class = 'division' THEN 1
-				WHEN a.class = 'water' THEN 2
-				WHEN a.class = 'road' THEN 3
-				WHEN a.class = 'poi' THEN 4
-				ELSE 100
-			END AS class_score,
-			CASE
-				WHEN a.subclass = 'locality' THEN 1
-				WHEN a.subclass = 'county' THEN 2
-				WHEN a.subclass = 'neighboorhood' THEN 3
-				WHEN a.subclass = 'microhood' THEN 4
-				-- roads up to living_street the rest gets a high score
-				WHEN a.subclass = 'motorway' THEN 1
-				WHEN a.subclass = 'trunk' THEN 2
-				WHEN a.subclass = 'primary' THEN 3
-				WHEN a.subclass = 'secondary' THEN 4
-				WHEN a.subclass = 'tertiary' THEN 5
-				WHEN a.subclass = 'unclassified' THEN 6
-				WHEN a.subclass = 'residential' THEN 7
-				WHEN a.subclass = 'living_street' THEN 8
-				ELSE 100
-			END AS subclass_score,
-			ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY similarity(b.alias, $1) DESC) AS rnk
-		FROM %s a
-		JOIN alias_results b ON a.id = b.feature_id
-	)
-	SELECT name, class, subclass, divisions, alias, search, sim, geom
-	FROM ranked_aliases
-	WHERE rnk = 1
-	AND class IN %s
-	ORDER BY sim desc, class_score asc, subclass_score asc
-	LIMIT %v;`, database.TABLE_SEARCH, database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, options.Limit)
+	// Construct the query
+	query := createQuery(options, input)
 
+	// Execute the query
 	rows, err := pool.Query(context.Background(), query, input)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	// Parse the results
+	results, err := parseResults(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
 	var results []GeocodeResult
+
 	for rows.Next() {
 		var name, class, subclass, divisions, alias, search, geom string
 		var sim float64
+
 		if err := rows.Scan(&name, &class, &subclass, &divisions, &alias, &search, &sim, &geom); err != nil {
 			return nil, err
 		}
@@ -174,4 +125,76 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	}
 
 	return results, nil
+}
+
+func createQuery(options GeocodeOptions, input string) string {
+	classesIn := options.ClassesToSqlArray()
+
+	return fmt.Sprintf(`
+		WITH fts AS (
+			SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
+			FROM %s AS a
+			WHERE to_tsvector('simple', a.alias) @@ to_tsquery('simple',
+				replace($1, ' ', ':* & ') || ':*'
+			)
+			ORDER BY sim
+		),
+		trgm AS (
+			SELECT feature_id, alias, similarity(a.alias, $1) AS sim, 'trgm' as search
+			FROM %s AS a
+			WHERE a.alias %% $1
+			ORDER BY a.alias <-> $1
+		),
+		alias_results AS (
+			SELECT *
+			FROM fts
+			UNION ALL
+			SELECT *
+			FROM trgm
+			WHERE NOT EXISTS (SELECT 1 FROM fts)
+		), ranked_aliases AS (
+			SELECT
+				a.id,
+				a.name,
+				a.class,
+				a.subclass,
+				array_to_string(a.divisions, ',') AS divisions,
+				b.alias,
+				b.sim,
+				b.search,
+				ST_AsGeoJSON(a.geom) as geom,
+				CASE
+					WHEN a.class = 'division' THEN 1
+					WHEN a.class = 'water' THEN 2
+					WHEN a.class = 'road' THEN 3
+					WHEN a.class = 'poi' THEN 4
+					ELSE 100
+				END AS class_score,
+				CASE
+					WHEN a.subclass = 'locality' THEN 1
+					WHEN a.subclass = 'county' THEN 2
+					WHEN a.subclass = 'neighboorhood' THEN 3
+					WHEN a.subclass = 'microhood' THEN 4
+					-- roads up to living_street the rest gets a high score
+					WHEN a.subclass = 'motorway' THEN 1
+					WHEN a.subclass = 'trunk' THEN 2
+					WHEN a.subclass = 'primary' THEN 3
+					WHEN a.subclass = 'secondary' THEN 4
+					WHEN a.subclass = 'tertiary' THEN 5
+					WHEN a.subclass = 'unclassified' THEN 6
+					WHEN a.subclass = 'residential' THEN 7
+					WHEN a.subclass = 'living_street' THEN 8
+					ELSE 100
+				END AS subclass_score,
+				ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY similarity(b.alias, $1) DESC) AS rnk
+			FROM %s a
+			JOIN alias_results b ON a.id = b.feature_id
+		)
+		SELECT name, class, subclass, divisions, alias, search, sim, geom
+		FROM ranked_aliases
+		WHERE rnk = 1
+		AND class IN %s
+		ORDER BY sim desc, class_score asc, subclass_score asc
+		LIMIT %v;`,
+		database.TABLE_SEARCH, database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, options.Limit)
 }
