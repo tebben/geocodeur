@@ -156,7 +156,7 @@ COPY (
         ON ST_Intersects(a.geom, b.geometry)
         WHERE
             a.subclass IN ('stream', 'drain', 'pond', 'lake', 'moat', 'fairway', 'ditch', 'swimming_pool', 'basin', 'water')
-            AND b.subtype IN ('locality', 'county')
+            AND b.subtype = 'locality'
     ),
     aggregated_relations AS (
         SELECT
