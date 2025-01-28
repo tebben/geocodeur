@@ -6,44 +6,43 @@ The geocoder will include the following data categories:
 
 - Division
 - Road
-- POI (Point of Interest)
+- POI
 - Water
 - Infrastructure
 
 To improve search precision, multiple aliases can be generated for each Overture Maps feature. These aliases anticipate user input that may combine multiple locations to refine search results. For example, in the Netherlands, many streets are named "Kerkstraat." If a user searches for "Kerkstraat Amsterdam," the geocoder should prioritize "Kerkstraat" in Amsterdam as the top result. To achieve this, aliases like "Kerkstraat," "Kerkstraat {intersecting division.locality}," and "Kerkstraat {intersecting division.county}" are added. These aliases vary based on the class and subclass of the feature.
 
-Postgres Full Text Search (FTS) is used to index the aliases and can handle most of the queries efficiently. For instance if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam. When FTS was not able to find a match, trigram matching takes over to find similar results. This approach is more tolerant of typos.
+Postgres Full Text Search (FTS) is used to index the aliases and can handle most of the queries efficiently. For instance if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam. When FTS is not able to find a match, trigram matching takes over to find similar results. This approach is more tolerant of typos.
 
-Additionally, related road segments are merged into a single entry, enabling retrieval of the full road rather than fragmented segments. This approach reduces the likelihood of excessive high-matching results for the same road.
+Additionally, related segments for road and water are merged into a single entry, enabling retrieval of the full feature rather than fragmented segments in the Overture Maps data. This approach reduces the likelihood of excessive high-matching results for the same road or water.
 
 Other cases can also be accommodated. For instance:
 
 A user searching for "A2" (a highway in the Netherlands) can find the correct result even though its name in Overture is "Rijksweg A2," thanks to aliases like "A2" and "Rijksweg A2."
 For entries with names like "'s-Hertogenbosch," a common alias "den bosch" can be added, as users are more likely to type the latter. These aliases are applied to all related entries and relationships.
 
-
 ## Vectors?
 
-A test was also done with creating vectors for the aliases instead of trigram matching but since the input will not benefit much from semantics we can stick with trigram matching. Some other cons of vectors vs trigram matching for the geocoder:
+A test was also done with creating vectors for the aliases instead of FTS and trigram matching but since the input will not benefit much from semantics we can stick with FTS and trigram matching. Some cons of vectors for the geocoder:
 
 - Much more computation time to create the database
 - Much more storage space needed for the vectors, With a small test dataset 96MB vs 11MB
-- Cannot handle typos as well as trigram matching.
+- Cannot handle typos as well.
 - Does not handle swappable words as well as trigram matching.
-
-The performance looks roughly the same for both methods.
+- Slower query times vs FTS, rougly the same for trigram matching.
 
 ## ToDo
 
-This is a first test and by no means a usable thing.
+This is a first experiment and seems to work pretty good but there are still some todo's.
 
-- Add infrastructure data
-- Add address data
-- More flexible API
-- Reverse geocoding
-- Filter based on bbox
-- Store original overture id's in the overture table
-- Tool to take away installing deps, manual downloading and processing data
+- API: OpenAPI spec
+- API: Endpoint for reverse geocoding
+- API: Filter results based on bbox
+- Data: Add infrastructure data
+- Data: Add address data
+- Data: Store original overture id's in the overture table
+- Data: Some problems and todo's described below
+- CLI: Make it easier to setup geocodeur
 
 ## Getting started
 
@@ -74,7 +73,7 @@ Now we can download all data from Overture Maps with a given bounding box using 
 ./scripts/download.sh 3.1624817624420167,50.76012028429577,7.274625587715649,53.50694358074323
 ```
 
-We can now process the data to mold it into something we can use.
+We can now process the download Overture Maps data to make it usable for geocodeur.
 
 ```sh
 go run main.go process
@@ -139,7 +138,7 @@ FTS has a 1 result so no fallback to trigram matching is needed.
 
 ### Database
 
-The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with to_tsvector on alias for FTS.
+The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with `to_tsvector` on `alias` for FTS.
 
 ![example](./static/example.jpg)
 
@@ -179,20 +178,17 @@ We have features 'duplicated' as lines and polygons, remove a line if it's withi
 
 ## Building executable
 
+Manually build the geocodeur executable with the following command.
+
 ```sh
-go build -ldflags="-s -w" -gcflags="-m" -o geocodeur main.go
+go build -ldflags="-s -w" -gcflags="-m" -o geocodeur ./src/main.go
 ```
 
 ## Docker
 
-Build the image
-
-```sh
-docker build -t geocodeur .
-```
-
 Run geocodeur server and mount a config file, we use `--network host` so geocodeur can connect directly to the database.
+Latest image is available on ghcr.io.
 
 ```sh
-docker run --network host -v ./config/geocodeur.conf:/config/geocodeur.conf geocodeur
+docker run --network host -v ./config/geocodeur.conf:/config/geocodeur.conf ghcr.io/tebben/geocodeur:latest
 ```
