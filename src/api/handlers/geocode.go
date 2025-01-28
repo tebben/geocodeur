@@ -39,7 +39,7 @@ func GeocodeHandler(config settings.Config) http.HandlerFunc {
 		timeStart := time.Now()
 		results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, query)
 		if err != nil {
-			apiError := errors.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Error", "test"), nil)
+			apiError := errors.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Error: %v", err), nil)
 			HandleError(w, apiError)
 			return
 		}
