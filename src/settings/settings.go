@@ -33,6 +33,7 @@ type APIConfig struct {
 
 type DatabaseConfig struct {
 	Schema           string `json:"schema"`
+	Tablespace       string `json:"tablespace"`
 	ConnectionString string `json:"connectionString"`
 }
 

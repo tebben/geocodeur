@@ -41,28 +41,29 @@ func getNextID() uint64 {
 	return atomic.AddUint64(&counter, 1)
 }
 
-func CreateDB(connectionString, schema string) {
-	pool, err := GetDBPool("geocodeur", connectionString)
+func CreateDB(config settings.Config) {
+	pool, err := GetDBPool("geocodeur", config.Database.ConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to get database pool: %v", err)
 	}
 
-	err = setupDatabase(pool, schema)
+	log.Infof("Setting up database %s", config.Database.Schema)
+	err = setupDatabase(pool, config.Database.Schema)
 	if err != nil {
 		log.Fatalf("Failed to create schema: %v", err)
 	}
 
-	err = createTableOverture(pool)
+	log.Infof("Creating tables %s and %s", TABLE_OVERTURE, TABLE_SEARCH)
+	err = createTableOverture(pool, config.Database.Tablespace)
 	if err != nil {
 		log.Fatalf("Failed to recreate table: %v", err)
 	}
 
-	err = createTableSearch(pool)
+	err = createTableSearch(pool, config.Database.Tablespace)
 	if err != nil {
 		log.Fatalf("Failed to recreate table: %v", err)
 	}
 
-	config := settings.GetConfig()
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_division.geoparquet"))
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_segment.geoparquet"))
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_water.geoparquet"))
@@ -82,6 +83,8 @@ func CreateDB(connectionString, schema string) {
 }
 
 func processParquet(pool *pgxpool.Pool, path string) {
+	log.Infof("Inserting %s\n", path)
+
 	fr, err := local.NewLocalFileReader(path)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
@@ -172,7 +175,6 @@ func processParquet(pool *pgxpool.Pool, path string) {
 						addAlias(tx, rec.ID, alias, id)
 					}
 				}
-
 			}
 
 			if err := tx.Commit(context.Background()); err != nil {
@@ -183,8 +185,7 @@ func processParquet(pool *pgxpool.Pool, path string) {
 	}
 
 	wg.Wait()
-
-	fmt.Printf("Inserted %s\n", path)
+	log.Infof("Inserted %s\n", path)
 }
 
 func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
@@ -246,7 +247,11 @@ func setupDatabase(pool *pgxpool.Pool, schema string) error {
 	return err
 }
 
-func createTableOverture(pool *pgxpool.Pool) error {
+func createTableOverture(pool *pgxpool.Pool, tablespace string) error {
+	if tablespace != "" {
+		tablespace = fmt.Sprintf("TABLESPACE %s", tablespace)
+	}
+
 	query := fmt.Sprintf(`
 		DROP TABLE IF EXISTS %[1]s CASCADE;
 		DROP INDEX IF EXISTS idx_%[1]s_geom;
@@ -258,17 +263,21 @@ func createTableOverture(pool *pgxpool.Pool) error {
 			subclass TEXT,
 			divisions TEXT[],
 			geom geometry(Geometry, 4326)
-		);
+		) %s;
 
 		CREATE INDEX idx_%[1]s_geom ON %[1]s USING GIST (geom);
-	`, TABLE_OVERTURE)
+	`, TABLE_OVERTURE, tablespace)
 
 	_, err := pool.Exec(context.Background(), query)
 	return err
 }
 
 // Recreate the table in PostgreSQL
-func createTableSearch(pool *pgxpool.Pool) error {
+func createTableSearch(pool *pgxpool.Pool, tablespace string) error {
+	if tablespace != "" {
+		tablespace = fmt.Sprintf("TABLESPACE %s", tablespace)
+	}
+
 	query := fmt.Sprintf(`
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -279,7 +288,7 @@ func createTableSearch(pool *pgxpool.Pool) error {
         CREATE TABLE %[1]s (
 			feature_id BIGINT,
             alias TEXT
-        );
+        ) %[2]s;
 
 		-- index for trgm search, gin > gist for our case, gist can be very slow
 		CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
@@ -287,8 +296,8 @@ func createTableSearch(pool *pgxpool.Pool) error {
 		-- index for FTS search
 		CREATE INDEX idx_%[1]s_fts ON %[1]s USING GIN (to_tsvector('simple', alias));
 
-		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[2]s (id) ON DELETE CASCADE;
-    `, TABLE_SEARCH, TABLE_OVERTURE)
+		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[3]s (id) ON DELETE CASCADE;
+    `, TABLE_SEARCH, tablespace, TABLE_OVERTURE)
 
 	_, err := pool.Exec(context.Background(), query)
 	return err
