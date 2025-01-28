@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tebben/geocodeur/settings"
 	"github.com/xitongsys/parquet-go-source/local"
 	"github.com/xitongsys/parquet-go/reader"
 
@@ -40,15 +41,15 @@ func getNextID() uint64 {
 	return atomic.AddUint64(&counter, 1)
 }
 
-func CreateDB(connectionString string) {
+func CreateDB(connectionString, schema string) {
 	pool, err := GetDBPool("geocodeur", connectionString)
 	if err != nil {
 		log.Fatalf("Failed to get database pool: %v", err)
 	}
 
-	err = configureDatabase(pool)
+	err = setupDatabase(pool, schema)
 	if err != nil {
-		log.Fatalf("Failed to configure database: %v", err)
+		log.Fatalf("Failed to create schema: %v", err)
 	}
 
 	err = createTableOverture(pool)
@@ -61,10 +62,11 @@ func CreateDB(connectionString string) {
 		log.Fatalf("Failed to recreate table: %v", err)
 	}
 
-	processParquet(pool, "../data/download/geocodeur_division.geoparquet")
-	processParquet(pool, "../data/download/geocodeur_segment.geoparquet")
-	processParquet(pool, "../data/download/geocodeur_water.geoparquet")
-	processParquet(pool, "../data/download/geocodeur_poi.geoparquet")
+	config := settings.GetConfig()
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_division.geoparquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_segment.geoparquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_water.geoparquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_poi.geoparquet"))
 
 	fmt.Println("Reindexing tables")
 	err = reindex(pool)
@@ -225,16 +227,29 @@ func vacuum(pool *pgxpool.Pool) error {
 	return nil
 }
 
-func configureDatabase(pool *pgxpool.Pool) error {
-	_, err := pool.Exec(context.Background(), "ALTER SYSTEM SET work_mem = '256MB';")
+func setupDatabase(pool *pgxpool.Pool, schema string) error {
+	queryExtensions := `
+		CREATE EXTENSION IF NOT EXISTS postgis;
+		CREATE EXTENSION IF NOT EXISTS pg_trgm;
+	`
+
+	_, err := pool.Exec(context.Background(), queryExtensions)
+	if err != nil {
+		return fmt.Errorf("failed to create extensions: %v", err)
+	}
+
+	if schema == "" {
+		return nil
+	}
+
+	_, err = pool.Exec(context.Background(), fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s;", schema))
 	return err
 }
 
 func createTableOverture(pool *pgxpool.Pool) error {
 	query := fmt.Sprintf(`
-		CREATE EXTENSION IF NOT EXISTS postgis;
-
 		DROP TABLE IF EXISTS %[1]s CASCADE;
+		DROP INDEX IF EXISTS idx_%[1]s_geom;
 
 		CREATE TABLE %[1]s (
 			id BIGINT PRIMARY KEY,
@@ -244,6 +259,8 @@ func createTableOverture(pool *pgxpool.Pool) error {
 			divisions TEXT[],
 			geom geometry(Geometry, 4326)
 		);
+
+		CREATE INDEX idx_%[1]s_geom ON %[1]s USING GIST (geom);
 	`, TABLE_OVERTURE)
 
 	_, err := pool.Exec(context.Background(), query)
@@ -268,7 +285,7 @@ func createTableSearch(pool *pgxpool.Pool) error {
 		CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
 
 		-- index for FTS search
-		CREATE INDEX idx_%[1]s_fts ON public.overture_search USING GIN (to_tsvector('simple', alias));
+		CREATE INDEX idx_%[1]s_fts ON %[1]s USING GIN (to_tsvector('simple', alias));
 
 		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[2]s (id) ON DELETE CASCADE;
     `, TABLE_SEARCH, TABLE_OVERTURE)

@@ -26,9 +26,14 @@ func initLogger(config settings.Config) {
 }
 
 func main() {
+	log.Info("Starting geocodeur")
+	if len(os.Args) < 1 {
+		log.Fatal("No command provided")
+	}
+
 	err := settings.InitializeConfig()
 	if err != nil {
-		log.Fatalf("Failed to initialize configuration: %v", err)
+		log.Fatal(err)
 	}
 
 	config := settings.GetConfig()
@@ -36,7 +41,7 @@ func main() {
 
 	command := os.Args[1]
 	if command == "create" {
-		database.CreateDB(config.Database.ConnectionString)
+		database.CreateDB(config.Database.ConnectionString, config.Database.Schema)
 	} else if command == "query" {
 		query(config)
 	} else if command == "process" {
