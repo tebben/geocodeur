@@ -24,19 +24,26 @@ func init() {
 }
 
 // periodicCleanup is a goroutine that periodically cleans up idle database connection pools.
-// It closes idle pools that have not been used for a certain duration specified by cleanupInterval.
+// It closes pools that have idle connections.
 func periodicCleanup() {
+	idleDuration := 2 * cleanupInterval
+
 	for {
 		time.Sleep(cleanupInterval)
 
 		dbPoolMutex.Lock()
 		for name, pool := range dbPoolMap {
 			lastUsed, ok := poolLastUsed[name]
-			if !ok || time.Since(lastUsed) > cleanupInterval {
-				pool.Close()
-				delete(dbPoolMap, name)
-				delete(poolLastUsed, name)
-				log.Debugf("Closed idle database pool: %s", name)
+			if !ok || time.Since(lastUsed) > idleDuration {
+				stats := pool.Stat()
+				if stats.TotalConns() == stats.IdleConns() {
+					pool.Close()
+					delete(dbPoolMap, name)
+					delete(poolLastUsed, name)
+					log.Debugf("Closed idle database pool: %s", name)
+				} else {
+					log.Debugf("Pool %s is active, skipping cleanup", name)
+				}
 			}
 		}
 		dbPoolMutex.Unlock()
@@ -71,8 +78,9 @@ func GetDBPool(name string, connectionString string) (*pgxpool.Pool, error) {
 	}
 
 	poolConfig, err := pgxpool.ParseConfig(connectionString)
+	poolConfig.MaxConns = 10
 	if err != nil {
-		log.Fatalf("Unable to parse connection string: %v\n", err)
+		return nil, fmt.Errorf("Unable to parse connection string")
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
