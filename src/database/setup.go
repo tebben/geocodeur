@@ -42,7 +42,7 @@ func getNextID() uint64 {
 }
 
 func CreateDB(config settings.Config) {
-	pool, err := GetDBPool("geocodeur", config.Database.ConnectionString)
+	pool, err := GetDBPool("geocodeur", config.Database)
 	if err != nil {
 		log.Fatalf("Failed to get database pool: %v", err)
 	}

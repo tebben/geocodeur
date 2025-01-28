@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
+	"github.com/tebben/geocodeur/settings"
 )
 
 var (
@@ -68,7 +69,7 @@ func CloseDBPools() {
 // If a pool with the given name already exists, it returns the existing pool.
 // Otherwise, it creates a new pool and adds it to the pool map.
 // The last used time for the pool is updated each time it is retrieved or created.
-func GetDBPool(name string, connectionString string) (*pgxpool.Pool, error) {
+func GetDBPool(name string, config settings.DatabaseConfig) (*pgxpool.Pool, error) {
 	dbPoolMutex.Lock()
 	defer dbPoolMutex.Unlock()
 
@@ -77,8 +78,8 @@ func GetDBPool(name string, connectionString string) (*pgxpool.Pool, error) {
 		return pool, nil
 	}
 
-	poolConfig, err := pgxpool.ParseConfig(connectionString)
-	poolConfig.MaxConns = 10
+	poolConfig, err := pgxpool.ParseConfig(config.ConnectionString)
+	poolConfig.MaxConns = config.MaxConnections
 	if err != nil {
 		return nil, fmt.Errorf("Unable to parse connection string")
 	}

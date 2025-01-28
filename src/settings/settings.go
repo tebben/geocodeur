@@ -35,6 +35,7 @@ type DatabaseConfig struct {
 	Schema           string `json:"schema"`
 	Tablespace       string `json:"tablespace"`
 	ConnectionString string `json:"connectionString"`
+	MaxConnections   int32  `json:"maxConnections"`
 }
 
 type CorsConfig struct {
@@ -156,6 +157,10 @@ func loadConfig() error {
 
 	if config.API.PGTRGMTreshold == 0 {
 		config.API.PGTRGMTreshold = 0.45
+	}
+
+	if config.Database.MaxConnections == 0 {
+		config.Database.MaxConnections = 5
 	}
 
 	return nil

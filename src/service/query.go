@@ -77,7 +77,8 @@ func NewGeocodeOptions(pgtrmTreshold float64, limit uint16, classes []Class) Geo
 }
 
 func Geocode(connectionString string, options GeocodeOptions, input string) ([]GeocodeResult, error) {
-	pool, err := database.GetDBPool("geocodeur", connectionString)
+	config := settings.GetConfig()
+	pool, err := database.GetDBPool("geocodeur", config.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +87,7 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	input = strings.ToLower(input)
 
 	// If incoming request has a different pg_trgm similarity threshold than the current one, set it
-	if options.PgtrgmTreshold != settings.GetConfig().API.PGTRGMTreshold {
+	if options.PgtrgmTreshold != config.API.PGTRGMTreshold {
 		pool.Exec(context.Background(), fmt.Sprintf("SET pg_trgm.similarity_threshold = %v;", options.PgtrgmTreshold))
 	}
 
