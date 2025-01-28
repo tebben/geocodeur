@@ -74,6 +74,7 @@ func createRouter(config settings.Config) http.Handler {
 	router.Use(chimiddleware.Recoverer)
 	router.Use(chimiddleware.Throttle(config.Server.MaxConcurrentRequests))
 	router.Use(chimiddleware.Timeout(time.Duration(config.Server.Timeout) * time.Second))
+	router.Use(chimiddleware.Compress(5, "application/json"))
 
 	router.NotFound(handlers.NotFoundHandler)
 	router.Route("/api/geocode", func(r chi.Router) {
