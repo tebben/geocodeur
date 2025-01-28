@@ -99,8 +99,7 @@ COPY (
         ON
             ST_Intersects(a.geom, b.geometry)
         WHERE
-            (a.subclass != 'motorway' AND b.subtype = 'locality') OR
-            (a.subclass != 'motorway' AND b.subtype = 'county')
+            (a.subclass != 'motorway' AND b.subtype = 'locality')
     ),
     aggregated_relations AS (
         SELECT
