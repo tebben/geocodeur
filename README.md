@@ -94,28 +94,52 @@ Create the tables and load data
 go run main.go create
 ```
 
-Test a query
+### Start API
+
+When data is loaded in the database we can start the API server and fire some queries.
 
 ```sh
-go run main.go query "Adr poorters Vught"
+go run main.go server
+```
 
-ID: 0871fa4b6affffff046ff9a382713452, Name: Adriaan Poortersstraat, Class: road, Subclass: residential, alias: Adriaan Poortersstraat Vught, Similarity: 0.548387
-ID: 0881fa4b6e7fffff047fefca39722950, Name: Poortlaan, Class: road, Subclass: residential, alias: Poortlaan Vught, Similarity: 0.458333
-ID: 0850345cbfffffff01ce7b770cbcd605, Name: Vughterpoort, Class: division, Subclass: neighborhood, alias: Vughterpoort Vught, Similarity: 0.434783
-ID: 0881fa4b463fffff047f67c7ffb17b1b, Name: Poirtersstraat, Class: road, Subclass: residential, alias: Poirtersstraat Vught, Similarity: 0.379310
-ID: 0861fa4b6fffffff046ffd18b6fe4bf4, Name: Postweg, Class: road, Subclass: unknown, alias: Postweg Vught, Similarity: 0.320000
-ID: 0891fa4b6a9bffff046fffbd97b71b83, Name: Postweg, Class: road, Subclass: tertiary, alias: Postweg Vught, Similarity: 0.320000
-ID: 08c1fa4b42b231ff047eff1228c9428a, Name: De Voort, Class: road, Subclass: track, alias: De Voort Vught, Similarity: 0.320000
-ID: 08b1fa4b6a9b4fff046fefb783b1e7d7, Name: Postweg, Class: road, Subclass: cycleway, alias: Postweg Vught, Similarity: 0.320000
-ID: 08f1fa4b6a04d3890322fa112c36e1fe, Name: Vught, Class: poi, Subclass: , alias: Vught Vught, Similarity: 0.315789
-ID: 085036a4ffffffff01d4415f1a3b6d42, Name: Vught, Class: division, Subclass: county, alias: Vught, Similarity: 0.315789
+#### Query API
+
+```sh
+curl -X GET "http://localhost:8080/api/geocode?q=Adr%20poorters%20Vught&class=road&limit=10"
+```
+
+FTS has a 1 result so no fallback to trigram matching is needed.
+
+```json
+{
+  "ms": 3,
+  "results": [
+    {
+      "name": "Adriaan Poortersstraat",
+      "class": "road",
+      "subclass": "residential",
+      "divisions": "Vught",
+      "alias": "adriaan poortersstraat vught",
+      "searchType": "fts",
+      "similarity": 0.548,
+      "geom": {
+        "type": "LineString",
+        "coordinates": [
+          [5.2859974, 51.6466151],
+          [5.2860828, 51.646718],
+          [5.2891755, 51.6474486]
+        ]
+      }
+    }
+  ]
+}
 ```
 
 ## Data
 
 ### Database
 
-The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with to_tsvector on alias for full text search.
+The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with to_tsvector on alias for FTS.
 
 ![example](./static/example.jpg)
 
@@ -157,4 +181,18 @@ We have features 'duplicated' as lines and polygons, remove a line if it's withi
 
 ```sh
 go build -ldflags="-s -w" -gcflags="-m" -o geocodeur main.go
+```
+
+## Docker
+
+Build the image
+
+```sh
+docker build -t geocodeur .
+```
+
+Run geocodeur server and mount a config file, we use `--network host` so geocodeur can connect directly to the database.
+
+```sh
+docker run --network host -v ./config/geocodeur.conf:/config/geocodeur.conf geocodeur
 ```
