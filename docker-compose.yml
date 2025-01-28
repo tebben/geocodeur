@@ -1,8 +1,6 @@
-version: "3.8"
-
 services:
   geocodeur-db:
-    image: "postgis/postgis:17-3.5-alpine"
+    image: "postgis/postgis:17-3.5"
     container_name: "geocodeur-db"
     environment:
       POSTGRES_USER: postgres
@@ -12,6 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - geocodeur_data:/var/lib/postgresql/data
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
 
 volumes:
   geocodeur_data:
