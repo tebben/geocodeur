@@ -1,6 +1,6 @@
 # geocodeur
 
-This project explores the creation of a geocoder using Overture Maps data with free-text search functionality, leveraging similarity search based on trigram matching. The goal is not to replicate the original Overture data but to design a simplified schema focused solely on geocoding needs, avoiding unnecessary data that does not serve this purpose.
+This project explores the creation of a geocoder using Overture Maps data with free-text search functionality, leveraging FTS and similarity search based on trigram matching. The goal is not to replicate the original Overture data but to design a simplified schema focused solely on geocoding needs, avoiding unnecessary data that does not serve this purpose.
 
 The geocoder will include the following data categories:
 
@@ -12,7 +12,7 @@ The geocoder will include the following data categories:
 
 To improve search precision, multiple aliases can be generated for each Overture Maps feature. These aliases anticipate user input that may combine multiple locations to refine search results. For example, in the Netherlands, many streets are named "Kerkstraat." If a user searches for "Kerkstraat Amsterdam," the geocoder should prioritize "Kerkstraat" in Amsterdam as the top result. To achieve this, aliases like "Kerkstraat," "Kerkstraat {intersecting division.locality}," and "Kerkstraat {intersecting division.county}" are added. These aliases vary based on the class and subclass of the feature.
 
-Trigram matching allows for flexible searches. For instance, even if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam.
+Postgres Full Text Search (FTS) is used to index the aliases and can handle most of the queries efficiently. For instance if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam. When FTS was not able to find a match, trigram matching takes over to find similar results. This approach is more tolerant of typos.
 
 Additionally, related road segments are merged into a single entry, enabling retrieval of the full road rather than fragmented segments. This approach reduces the likelihood of excessive high-matching results for the same road.
 
@@ -37,11 +37,12 @@ The performance looks roughly the same for both methods.
 
 This is a first test and by no means a usable thing.
 
-- Add water and infrastructure data
-- Add API service
+- Add infrastructure data
+- Add address data
+- More flexible API
 - Reverse geocoding
-- Add more aliases
-- Filter based on bbox, class, subclass
+- Filter based on bbox
+- Store original overture id's in the overture table
 - Tool to take away installing deps, manual downloading and processing data
 
 ## Getting started
@@ -114,7 +115,7 @@ ID: 085036a4ffffffff01d4415f1a3b6d42, Name: Vught, Class: division, Subclass: co
 
 ### Database
 
-The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm`.
+The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with to_tsvector on alias for full text search.
 
 ![example](./static/example.jpg)
 
