@@ -124,12 +124,12 @@ func registerRoutes(api huma.API, config settings.Config) {
 		Summary:     "Geocode (Free Text Search)",
 		Description: "This endpoint gives you the ability to search for a feature based on free text search.",
 	}, handlers.GeocodeHandler(config))
-}
 
-/* func greetHandler(ctx context.Context, input *struct {
-	Name string `path:"name" maxLength:"30" example:"world" doc:"Name to greet"`
-}) (*GreetingOutput, error) {
-	resp := &GreetingOutput{}
-	resp.Body.Message = fmt.Sprintf("Hello, %s!", input.Name)
-	return resp, nil
-} */
+	huma.Register(api, huma.Operation{
+		OperationID: "lookup",
+		Method:      http.MethodGet,
+		Path:        "/lookup/{id}",
+		Summary:     "Lookup",
+		Description: "Lookup a feature based on its ID.",
+	}, handlers.LookupHandler(config))
+}

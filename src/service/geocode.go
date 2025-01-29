@@ -98,7 +98,7 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	}
 
 	// Construct the query
-	query := createQuery(options, input)
+	query := createGeocodeQuery(options, input)
 
 	// Execute the query
 	rows, err := pool.Query(context.Background(), query, input)
@@ -108,7 +108,7 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	defer rows.Close()
 
 	// Parse the results
-	results, err := parseResults(rows)
+	results, err := parseGeocodeResults(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	return results, nil
 }
 
-func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
+func parseGeocodeResults(rows pgx.Rows) ([]GeocodeResult, error) {
 	var results []GeocodeResult
 
 	for rows.Next() {
@@ -136,7 +136,7 @@ func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
 	return results, nil
 }
 
-func createQuery(options GeocodeOptions, input string) string {
+func createGeocodeQuery(options GeocodeOptions, input string) string {
 	classesIn := options.ClassesToSqlArray()
 
 	// Conditional geometry column
