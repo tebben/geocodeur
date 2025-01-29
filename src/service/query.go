@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -50,9 +51,10 @@ func StringToClass(s string) (Class, error) {
 }
 
 type GeocodeOptions struct {
-	PgtrgmTreshold float64
-	Limit          uint16
-	Classes        []Class
+	PgtrgmTreshold  float64
+	Limit           uint16
+	Classes         []Class
+	IncludeGeometry bool
 }
 
 func (g GeocodeOptions) ClassesToSqlArray() string {
@@ -70,11 +72,12 @@ func (g GeocodeOptions) ClassesToSqlArray() string {
 }
 
 // new GeocodeOptions with default values
-func NewGeocodeOptions(pgtrmTreshold float64, limit uint16, classes []Class) GeocodeOptions {
+func NewGeocodeOptions(pgtrmTreshold float64, limit uint16, classes []Class, includeGeom bool) GeocodeOptions {
 	return GeocodeOptions{
-		PgtrgmTreshold: pgtrmTreshold,
-		Limit:          limit,
-		Classes:        classes,
+		PgtrgmTreshold:  pgtrmTreshold,
+		Limit:           limit,
+		Classes:         classes,
+		IncludeGeometry: includeGeom,
 	}
 }
 
@@ -117,16 +120,17 @@ func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
 	var results []GeocodeResult
 
 	for rows.Next() {
-		var name, class, subclass, divisions, alias, search, geom string
+		var name, class, subclass, divisions, alias, search string
 		var id uint64
 		var sim float64
+		var geom sql.NullString // Use NullString to handle cases where geom is excluded
 
 		if err := rows.Scan(&id, &name, &class, &subclass, &divisions, &alias, &search, &sim, &geom); err != nil {
 			return nil, err
 		}
 
 		sim = math.Round(sim*1000) / 1000
-		results = append(results, GeocodeResult{id, name, class, subclass, divisions, alias, search, sim, json.RawMessage(geom)})
+		results = append(results, GeocodeResult{id, name, class, subclass, divisions, alias, search, sim, json.RawMessage(geom.String)})
 	}
 
 	return results, nil
@@ -134,6 +138,12 @@ func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
 
 func createQuery(options GeocodeOptions, input string) string {
 	classesIn := options.ClassesToSqlArray()
+
+	// Conditional geometry column
+	geometryColumn := "'' AS geom" // Default to an empty string if geometry is not included
+	if options.IncludeGeometry {
+		geometryColumn = "ST_AsGeoJSON(a.geom) AS geom"
+	}
 
 	return fmt.Sprintf(`
 		WITH fts AS (
@@ -167,7 +177,7 @@ func createQuery(options GeocodeOptions, input string) string {
 				b.alias,
 				b.sim,
 				b.search,
-				ST_AsGeoJSON(a.geom) as geom,
+				%s, -- Geometry column is dynamically included or excluded
 				CASE
 					WHEN a.class = 'division' THEN 1
 					WHEN a.class = 'water' THEN 2
@@ -201,5 +211,5 @@ func createQuery(options GeocodeOptions, input string) string {
 		AND class IN %s
 		ORDER BY sim desc, class_score asc, subclass_score asc
 		LIMIT %v;`,
-		database.TABLE_SEARCH, database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, options.Limit)
+		database.TABLE_SEARCH, database.TABLE_SEARCH, geometryColumn, database.TABLE_OVERTURE, classesIn, options.Limit)
 }
