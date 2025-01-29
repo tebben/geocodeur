@@ -15,8 +15,8 @@ import (
 
 type GeocodeInput struct {
 	Query string   `required:"true" json:"q" query:"q" doc:"The search term to find a feature, the geocoder handles incomplete names and falls back to fuzzy search for typing errors. This way things as 'kerkstr ams' and 'kerkst masterdam' can still be found" example:"President Kennedylaan Amsterdam"`
-	Limit uint16   `required:"falase" json:"limit" query:"limit" doc:"Maximum number of results to return" minimum:"1" maximum:"100" default:"10"`
-	Class []string `required:"false" json:"class" query:"class" doc:"Filter results by class, this is a comma separated list. Leave empty to query on all classes" enum:"division,water,road,poi,infra" default:"division,water,road,infra,poi" example:"division,water,road,poi,infra" uniqueItems:"true"`
+	Limit uint16   `required:"false" json:"limit" query:"limit" doc:"Maximum number of results to return" minimum:"1" maximum:"100" default:"10"`
+	Class []string `required:"false" json:"class" query:"class" doc:"Filter results by class, this is a comma separated list. Leave empty to query on all classes" enum:"division,water,road,address,zipcode,poi,infra" default:"division,water,road,address,zipcode,infra,poi" example:"division,water,road,poi,infra" uniqueItems:"true"`
 	Geom  bool     `required:"false" json:"geom" query:"geom" doc:"Include the geometry of the feature in the result" default:"false"`
 }
 

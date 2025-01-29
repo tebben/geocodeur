@@ -16,6 +16,8 @@ func ProcessAll() {
 	process("water", queries.WaterQuery)
 	process("poi", queries.PoiQuery)
 	process("infra", queries.InfraQuery)
+	process("address", queries.AddressQuery)
+	process("zipcode", queries.ZipcodeQuery)
 }
 
 func process(name string, query string) {

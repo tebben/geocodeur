@@ -34,6 +34,8 @@ COPY ./data/download/geocodeur_segment.parquet /data/geocodeur_segment.parquet
 COPY ./data/download/geocodeur_water.parquet /data/geocodeur_water.parquet
 COPY ./data/download/geocodeur_poi.parquet /data/geocodeur_poi.parquet
 COPY ./data/download/geocodeur_infra.parquet /data/geocodeur_infra.parquet
+COPY ./data/download/geocodeur_address.parquet /data/geocodeur_address.parquet
+COPY ./data/download/geocodeur_zipcode.parquet /data/geocodeur_zipcode.parquet
 
 # Set the environment variables
 ENV GEOCODEUR_CONFIG_PATH="/config/geocodeur.conf"

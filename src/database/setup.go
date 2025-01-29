@@ -69,6 +69,8 @@ func CreateDB(config settings.Config) {
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_water.parquet"))
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_poi.parquet"))
 	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_infra.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_address.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_zipcode.parquet"))
 
 	log.Info("Creating foreign key overture_search -> overture")
 	err = createForeignKey(pool)
