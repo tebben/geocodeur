@@ -49,33 +49,6 @@ type ProcessConfig struct {
 	CountryClip string `json:"countryClip"`
 }
 
-// isOriginAllowed checks if the provided origin is allowed based on the CorsConfig settings.
-// It returns true if the origin is allowed, otherwise false.
-func (c CorsConfig) IsOriginAllowed(v string) bool {
-	if c.AllowOrigins[0] == "*" {
-		return true
-	}
-
-	for _, s := range c.AllowOrigins {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func (c CorsConfig) GetAllowOriginsString() string {
-	return strings.Join(c.AllowOrigins, ", ")
-}
-
-func (c CorsConfig) GetAllowHeadersString() string {
-	return strings.Join(c.AllowHeaders, ", ")
-}
-
-func (c CorsConfig) GetAllowMethodsString() string {
-	return strings.Join(c.AllowMethods, ", ")
-}
-
 // getConfigLocation returns the location of the Geocodeur configuration file.
 // If the environment variable GEOCODEUR_CONFIG_PATH is set, it returns its value.
 // Otherwise, it returns the default location "./config/geocodeur.conf".
@@ -152,7 +125,7 @@ func loadConfig() error {
 	}
 
 	if len(config.Server.CORS.AllowMethods) == 0 {
-		config.Server.CORS.AllowMethods = []string{"POST", "OPTIONS"}
+		config.Server.CORS.AllowMethods = []string{"GET", "OPTIONS"}
 	}
 
 	if config.API.PGTRGMTreshold == 0 {

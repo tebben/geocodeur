@@ -5,6 +5,7 @@ go 1.23
 toolchain go1.23.5
 
 require (
+	github.com/go-chi/chi/v5 v5.2.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/marcboeker/go-duckdb v1.8.3
 	github.com/sirupsen/logrus v1.9.3
@@ -16,7 +17,8 @@ require (
 	github.com/apache/arrow-go/v18 v18.0.0 // indirect
 	github.com/apache/arrow/go/arrow v0.0.0-20200730104253-651201b0f516 // indirect
 	github.com/apache/thrift v0.21.0 // indirect
-	github.com/go-chi/chi/v5 v5.2.0 // indirect
+	github.com/danielgtaylor/huma/v2 v2.28.0 // indirect
+	github.com/go-chi/cors v1.2.1 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect

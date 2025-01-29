@@ -1,116 +1,77 @@
 package handlers
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/tebben/geocodeur/errors"
 	"github.com/tebben/geocodeur/service"
 	"github.com/tebben/geocodeur/settings"
 )
 
-type GeocodeResult struct {
-	MS      float32                 `json:"ms"`
-	Results []service.GeocodeResult `json:"results"`
+type GeocodeInput struct {
+	Query string   `required:"true" json:"q" query:"q" doc:"The search term to find a feature, the geocoder handles incomplete names and falls back to fuzzy search for typing errors. This way things as 'kerkstr ams' and 'kerkst masterdam' can still be found" example:"President Kennedylaan Amsterdam"`
+	Limit uint16   `required:"falase" json:"limit" query:"limit" doc:"Maximum number of results to return" minimum:"1" maximum:"100" default:"10"`
+	Class []string `required:"false" json:"class" query:"class" doc:"Filter results by class, this is a comma separated list. Leave empty to query on all classes" default:"division,water,road,poi" example:"division,water,road,poi" uniqueItems:"true"`
 }
 
-// GeocodeHandler handles the HTTP request for executing a geocode request.
-// It takes in the HTTP response writer, the HTTP request and the database connection configuration.
-// It returns an error if there was an issue connecting to the database or executing the query.
-func GeocodeHandler(config settings.Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query().Get("q")
-		if query == "" {
-			apiError := errors.NewAPIError(http.StatusBadRequest, "Parameter q missing: Query", nil)
-			HandleError(w, apiError)
-			return
-		}
+type GeocodeResult struct {
+	Body struct {
+		QueryTime float32                 `json:"queryTime" doc:"Time in milliseconds it took to execute the query internally"`
+		Results   []service.GeocodeResult `json:"results"`
+	}
+}
 
-		geocodeOptions, apiError := createGeocoderOptions(config, r)
-		if apiError != nil {
-			HandleError(w, apiError)
-			return
+func GeocodeHandler(config settings.Config) func(ctx context.Context, input *struct {
+	GeocodeInput
+}) (*GeocodeResult, error) {
+	return func(ctx context.Context, input *struct {
+		GeocodeInput
+	}) (*GeocodeResult, error) {
+
+		geocodeOptions, error := createGeocoderOptions(config, input.GeocodeInput)
+		if error != nil {
+			return nil, huma.Error400BadRequest(error.Error())
 		}
 
 		timeStart := time.Now()
-		results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, query)
+		results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, input.Query)
 		if err != nil {
-			apiError := errors.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Error: %v", err), nil)
-			HandleError(w, apiError)
-			return
-		}
-		timeEnd := time.Now()
-
-		geocodeResult := GeocodeResult{
-			MS:      float32(timeEnd.Sub(timeStart).Milliseconds()),
-			Results: results,
+			return nil, huma.Error400BadRequest(fmt.Sprintf("%v", err))
 		}
 
-		// Set Content-Type to application/json
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		geocodeResult := &GeocodeResult{}
+		geocodeResult.Body.QueryTime = float32(time.Now().Sub(timeStart).Milliseconds())
+		geocodeResult.Body.Results = results
 
-		// Encode results to JSON and send as response
-		if err := json.NewEncoder(w).Encode(geocodeResult); err != nil {
-			http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
-		}
+		return geocodeResult, nil
 	}
 }
 
-func createGeocoderOptions(config settings.Config, r *http.Request) (service.GeocodeOptions, *errors.APIError) {
-	limit, err := getLimit(r)
+func createGeocoderOptions(config settings.Config, input GeocodeInput) (service.GeocodeOptions, *errors.APIError) {
+	classes, err := getClasses(input)
 	if err != nil {
 		return service.GeocodeOptions{}, errors.NewAPIError(http.StatusBadRequest, err.Error(), nil)
 	}
 
-	classes, err := getClasses(r)
-	if err != nil {
-		return service.GeocodeOptions{}, errors.NewAPIError(http.StatusBadRequest, err.Error(), nil)
-	}
-
-	return service.NewGeocodeOptions(config.API.PGTRGMTreshold, limit, classes), nil
+	return service.NewGeocodeOptions(config.API.PGTRGMTreshold, input.Limit, classes), nil
 }
 
-func getClasses(r *http.Request) ([]service.Class, error) {
-	qClass := r.URL.Query().Get("class")
+func getClasses(input GeocodeInput) ([]service.Class, error) {
+	var classes []service.Class = make([]service.Class, len(input.Class))
 
-	if qClass != "" {
-		splitClasses := strings.Split(qClass, ",")
-		classes := make([]service.Class, len(splitClasses))
-		for i, v := range splitClasses {
-			class, err := service.StringToClass(strings.ToLower(v))
-			if err != nil {
-				return nil, err
-			}
-
-			classes[i] = class
-		}
-
-		return classes, nil
-	}
-
-	return nil, nil
-}
-
-func getLimit(r *http.Request) (uint16, error) {
-	qLimit := r.URL.Query().Get("limit")
-
-	if qLimit != "" {
-		limit, err := strconv.ParseUint(qLimit, 10, 64)
+	for i, v := range input.Class {
+		class, err := service.StringToClass(strings.ToLower(v))
 		if err != nil {
-			return 0, fmt.Errorf("Invalid limit: %s", qLimit)
+			return nil, err
 		}
 
-		if limit > 100 {
-			return 0, fmt.Errorf("Limit exceeds maximum of 100")
-		}
-
-		return uint16(limit), nil
+		classes[i] = class
 	}
 
-	return 10, nil
+	return classes, nil
 }

@@ -8,19 +8,21 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	log "github.com/sirupsen/logrus"
 	"github.com/tebben/geocodeur/database"
 	"github.com/tebben/geocodeur/settings"
 )
 
 type GeocodeResult struct {
-	Name       string          `json:"name"`
-	Class      string          `json:"class"`
-	Subclass   string          `json:"subclass"`
-	Divisions  string          `json:"divisions"`
-	Alias      string          `json:"alias"`
-	SearchType string          `json:"searchType"`
-	Similarity float64         `json:"similarity"`
-	Geom       json.RawMessage `json:"geom"`
+	ID         uint64          `json:"id" doc:"The id of the feature, not the original Overture id"`
+	Name       string          `json:"name" doc:"The name of the feature"`
+	Class      string          `json:"class" doc:"The class of the feature"`
+	Subclass   string          `json:"subclass" doc:"The subclass of the feature"`
+	Divisions  string          `json:"divisions" doc:"The divisions of the feature"`
+	Alias      string          `json:"alias" doc:"The alias of the feature"`
+	SearchType string          `json:"searchType" doc:"The search type used to find the result, either fts (Full Text Search) or trgm (Trigram matching/fuzzy search)"`
+	Similarity float64         `json:"similarity" doc:"The similarity score q <-> alias, the higher the better"`
+	Geom       json.RawMessage `json:"geom,omitempty" doc:"The geometry of the feature in GeoJSON format"`
 }
 
 type Class string
@@ -80,7 +82,8 @@ func Geocode(connectionString string, options GeocodeOptions, input string) ([]G
 	config := settings.GetConfig()
 	pool, err := database.GetDBPool("geocodeur", config.Database)
 	if err != nil {
-		return nil, err
+		log.Errorf("Error getting database pool: %v", err)
+		return nil, fmt.Errorf("Error connecting to database")
 	}
 
 	// Everything for search is lower case so we lowercase the input query
@@ -115,14 +118,15 @@ func parseResults(rows pgx.Rows) ([]GeocodeResult, error) {
 
 	for rows.Next() {
 		var name, class, subclass, divisions, alias, search, geom string
+		var id uint64
 		var sim float64
 
-		if err := rows.Scan(&name, &class, &subclass, &divisions, &alias, &search, &sim, &geom); err != nil {
+		if err := rows.Scan(&id, &name, &class, &subclass, &divisions, &alias, &search, &sim, &geom); err != nil {
 			return nil, err
 		}
 
 		sim = math.Round(sim*1000) / 1000
-		results = append(results, GeocodeResult{name, class, subclass, divisions, alias, search, sim, json.RawMessage(geom)})
+		results = append(results, GeocodeResult{id, name, class, subclass, divisions, alias, search, sim, json.RawMessage(geom)})
 	}
 
 	return results, nil
@@ -191,7 +195,7 @@ func createQuery(options GeocodeOptions, input string) string {
 			FROM %s a
 			JOIN alias_results b ON a.id = b.feature_id
 		)
-		SELECT name, class, subclass, divisions, alias, search, sim, geom
+		SELECT id, name, class, subclass, divisions, alias, search, sim, geom
 		FROM ranked_aliases
 		WHERE rnk = 1
 		AND class IN %s

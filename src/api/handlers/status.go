@@ -1,20 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"time"
 )
 
-// StatusHandler handles the status check endpoint.
-// It sets the Content-Type header to "application/json" and returns a 200 OK status code.
-func StatusHandler(start time.Time) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+type StatusResult struct {
+	Body struct {
+		Started string `json:"started" doc:"Time in UTC when the server started"`
+		Uptime  string `json:"uptime" doc:"Uptime of geocodeur server"`
+	}
+}
 
+func StatusHandler(start time.Time) func(ctx context.Context, input *struct{}) (*StatusResult, error) {
+	return func(ctx context.Context, input *struct{}) (*StatusResult, error) {
 		uptime := formatDuration(time.Since(start))
-		_, _ = w.Write([]byte(`{"status": "ok", "started": "` + start.Local().UTC().String() + `", "uptime": "` + uptime + `"}`))
+
+		statusResult := &StatusResult{}
+		statusResult.Body.Started = start.Local().UTC().String()
+		statusResult.Body.Uptime = uptime
+
+		return statusResult, nil
 	}
 }
 
