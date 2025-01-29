@@ -63,7 +63,7 @@ Not sure:
 There are points for swimming_pool, do we get from infrastructure aswell?
 */
 
-package preprocess
+package queries
 
 var WaterQuery = `
 INSTALL spatial;
@@ -198,5 +198,5 @@ COPY (
         subclass,
         relation
     FROM aggregated_relations
-) TO '%DATADIR%geocodeur_water.geoparquet' (FORMAT 'PARQUET');
+) TO '%DATADIR%geocodeur_water.parquet' (FORMAT 'PARQUET');
 `

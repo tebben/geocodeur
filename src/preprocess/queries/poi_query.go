@@ -1,10 +1,10 @@
-package preprocess
+package queries
 
-var DivisionQuery = `
-    INSTALL spatial;
-    LOAD spatial;
+var PoiQuery = `
+INSTALL spatial;
+LOAD spatial;
 
-    COPY (
+COPY (
     WITH clip AS (
         SELECT
             CASE
@@ -12,29 +12,28 @@ var DivisionQuery = `
             ELSE ST_GeomFromText('POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))')
             END AS geom
     ),
-    divisions AS (
+    pois AS (
         SELECT
             a.id,
             a.names.primary AS name,
             a.geometry AS geom,
-            'division' AS class,
-            a.subtype AS subclass
-        FROM read_parquet('%DATADIR%division_area.geoparquet') AS a, clip AS b
+            'poi' AS class,
+            NULL AS subclass
+        FROM read_parquet('%DATADIR%place.geoparquet') AS a, clip AS b
         WHERE
             ST_Intersects(a.geometry, b.geom)
+        AND
+            a.confidence >= 0.4
     ),
     relations AS (
         SELECT
             d.id,
             l.names.primary AS relation_name
-        FROM divisions d
+        FROM pois d
         LEFT JOIN read_parquet('%DATADIR%division_area.geoparquet') l
-        ON ST_Contains(l.geometry, ST_Centroid(d.geom))
+        ON ST_Intersects(d.geom, l.geometry)
         WHERE
-            (d.subclass = 'neighborhood' AND l.subtype = 'locality') OR
-            (d.subclass = 'microhood' AND l.subtype = 'locality') OR
-            (d.subclass = 'locality' AND l.subtype = 'county') OR
-            (d.subclass = 'county' AND l.subtype = 'region')
+            (l.subtype = 'locality')
     ),
     aggregated_relations AS (
         SELECT
@@ -44,7 +43,7 @@ var DivisionQuery = `
             d.class,
             d.subclass,
             STRING_AGG(DISTINCT r.relation_name, ';') FILTER (WHERE r.relation_name IS NOT NULL) AS relation
-        FROM divisions d
+        FROM pois d
         LEFT JOIN relations r
         ON d.id = r.id
         GROUP BY d.id, d.name, d.geom, d.class, d.subclass
@@ -57,5 +56,5 @@ var DivisionQuery = `
         subclass,
         relation
     FROM aggregated_relations
-) TO '%DATADIR%geocodeur_division.geoparquet' (FORMAT 'PARQUET');
+) TO '%DATADIR%geocodeur_poi.parquet' (FORMAT 'PARQUET');
 `

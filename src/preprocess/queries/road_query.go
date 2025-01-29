@@ -1,4 +1,4 @@
-package preprocess
+package queries
 
 var RoadQuery = `
 INSTALL spatial;
@@ -145,5 +145,5 @@ COPY (
         subclass,
         relation
     FROM aggregated_relations
-) TO '%DATADIR%geocodeur_segment.geoparquet' (FORMAT 'PARQUET');
+) TO '%DATADIR%geocodeur_segment.parquet' (FORMAT 'PARQUET');
 `
