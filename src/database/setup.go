@@ -64,18 +64,37 @@ func CreateDB(config settings.Config) {
 		log.Fatalf("Failed to recreate table: %v", err)
 	}
 
-	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_division.geoparquet"))
-	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_segment.geoparquet"))
-	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_water.geoparquet"))
-	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_poi.geoparquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_division.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_segment.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_water.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_poi.parquet"))
+	processParquet(pool, fmt.Sprintf("%s%s", config.Process.Folder, "geocodeur_infra.parquet"))
 
-	fmt.Println("Reindexing tables")
-	err = reindex(pool)
+	log.Info("Creating foreign key overture_search -> overture")
+	err = createForeignKey(pool)
 	if err != nil {
-		log.Fatalf("Failed to reindex table: %v", err)
+		log.Fatalf("Failed to create foreign key: %v", err)
 	}
 
-	fmt.Println("Running full vacuum")
+	log.Info("Creating overture geom index")
+	err = createIndexGeom(pool)
+	if err != nil {
+		log.Fatalf("Failed to create index: %v", err)
+	}
+
+	log.Info("Creating search trgm index")
+	err = createIndexTrgm(pool)
+	if err != nil {
+		log.Fatalf("Failed to create index: %v", err)
+	}
+
+	log.Info("Creating search fts index")
+	err = createIndexFTS(pool)
+	if err != nil {
+		log.Fatalf("Failed to create index: %v", err)
+	}
+
+	log.Info("Running full vacuum")
 	err = vacuum(pool)
 	if err != nil {
 		log.Fatalf("Failed to vacuum table: %v", err)
@@ -203,17 +222,6 @@ func addAlias(tx pgx.Tx, id, alias string, recordId uint64) error {
 	return err
 }
 
-func reindex(pool *pgxpool.Pool) error {
-	query := fmt.Sprintf(`
-		REINDEX TABLE %s;
-		REINDEX TABLE %s;
-	`, TABLE_OVERTURE, TABLE_SEARCH)
-
-	_, err := pool.Exec(context.Background(),
-		query)
-	return err
-}
-
 func vacuum(pool *pgxpool.Pool) error {
 	_, err := pool.Exec(context.Background(), fmt.Sprintf("VACUUM FULL %s;", TABLE_OVERTURE))
 	if err != nil {
@@ -264,8 +272,6 @@ func createTableOverture(pool *pgxpool.Pool, tablespace string) error {
 			divisions TEXT[],
 			geom geometry(Geometry, 4326)
 		) %s;
-
-		CREATE INDEX idx_%[1]s_geom ON %[1]s USING GIST (geom);
 	`, TABLE_OVERTURE, tablespace)
 
 	_, err := pool.Exec(context.Background(), query)
@@ -289,15 +295,43 @@ func createTableSearch(pool *pgxpool.Pool, tablespace string) error {
 			feature_id BIGINT,
             alias TEXT
         ) %[2]s;
+    `, TABLE_SEARCH, tablespace)
 
-		-- index for trgm search, gin > gist for our case, gist can be very slow
+	_, err := pool.Exec(context.Background(), query)
+	return err
+}
+
+func createForeignKey(pool *pgxpool.Pool) error {
+	query := fmt.Sprintf(`
+		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[2]s (id) ON DELETE CASCADE;
+	`, TABLE_SEARCH, TABLE_OVERTURE)
+
+	_, err := pool.Exec(context.Background(), query)
+	return err
+}
+
+func createIndexGeom(pool *pgxpool.Pool) error {
+	query := fmt.Sprintf(`
+		CREATE INDEX IF NOT EXISTS idx_%[1]s_geom ON %[1]s USING GIST (geom);
+	`, TABLE_OVERTURE)
+
+	_, err := pool.Exec(context.Background(), query)
+	return err
+}
+
+func createIndexTrgm(pool *pgxpool.Pool) error {
+	query := fmt.Sprintf(`
 		CREATE INDEX IF NOT EXISTS idx_%[1]s_trgm ON %[1]s USING gin (alias gin_trgm_ops);
+	`, TABLE_SEARCH)
 
-		-- index for FTS search
-		CREATE INDEX idx_%[1]s_fts ON %[1]s USING GIN (to_tsvector('simple', alias));
+	_, err := pool.Exec(context.Background(), query)
+	return err
+}
 
-		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[3]s (id) ON DELETE CASCADE;
-    `, TABLE_SEARCH, tablespace, TABLE_OVERTURE)
+func createIndexFTS(pool *pgxpool.Pool) error {
+	query := fmt.Sprintf(`
+		CREATE INDEX IF NOT EXISTS idx_%[1]s_fts ON %[1]s USING GIN (to_tsvector('simple', alias));
+	`, TABLE_SEARCH)
 
 	_, err := pool.Exec(context.Background(), query)
 	return err

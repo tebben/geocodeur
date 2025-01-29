@@ -33,6 +33,7 @@ const (
 	Road     Class = "road"
 	Water    Class = "water"
 	Poi      Class = "poi"
+	Infra    Class = "infra"
 )
 
 func StringToClass(s string) (Class, error) {
@@ -45,6 +46,8 @@ func StringToClass(s string) (Class, error) {
 		return Water, nil
 	case string(Poi):
 		return Poi, nil
+	case string(Infra):
+		return Infra, nil
 	default:
 		return "", fmt.Errorf("class %s not found", s)
 	}
@@ -60,7 +63,7 @@ type GeocodeOptions struct {
 func (g GeocodeOptions) ClassesToSqlArray() string {
 	classes := g.Classes
 	if classes == nil || len(classes) == 0 {
-		classes = []Class{Division, Road, Water, Poi}
+		classes = []Class{Division, Road, Water, Poi, Infra}
 	}
 
 	lowerClasses := make([]string, len(classes))
@@ -186,7 +189,8 @@ func createGeocodeQuery(options GeocodeOptions, input string) string {
 					WHEN a.class = 'division' THEN 1
 					WHEN a.class = 'water' THEN 2
 					WHEN a.class = 'road' THEN 3
-					WHEN a.class = 'poi' THEN 4
+					WHEN a.class = 'infra' THEN 4
+					WHEN a.class = 'poi' THEN 5
 					ELSE 100
 				END AS class_score,
 				CASE
