@@ -15,7 +15,7 @@ var (
 	dbPoolMap       = make(map[string]*pgxpool.Pool) // Map to store database connection pools
 	dbPoolMutex     sync.Mutex                       // Mutex to ensure thread safety for dbPoolMap
 	poolLastUsed    = make(map[string]time.Time)     // Map to track last usage time of each pool
-	cleanupInterval = 1 * time.Minute                // Interval to check for idle pools
+	cleanupInterval = 3 * time.Minute                // Interval to check for idle pools
 )
 
 // init is called before the main function.
