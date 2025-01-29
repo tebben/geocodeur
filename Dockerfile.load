@@ -29,10 +29,11 @@ FROM debian:bookworm
 COPY ./config/geocodeur.load.conf /config/geocodeur.conf
 
 # Copy over our data to /data
-COPY ./data/download/geocodeur_division.geoparquet /data/geocodeur_division.geoparquet
-COPY ./data/download/geocodeur_segment.geoparquet /data/geocodeur_segment.geoparquet
-COPY ./data/download/geocodeur_water.geoparquet /data/geocodeur_water.geoparquet
-COPY ./data/download/geocodeur_poi.geoparquet /data/geocodeur_poi.geoparquet
+COPY ./data/download/geocodeur_division.parquet /data/geocodeur_division.parquet
+COPY ./data/download/geocodeur_segment.parquet /data/geocodeur_segment.parquet
+COPY ./data/download/geocodeur_water.parquet /data/geocodeur_water.parquet
+COPY ./data/download/geocodeur_poi.parquet /data/geocodeur_poi.parquet
+COPY ./data/download/geocodeur_infra.parquet /data/geocodeur_infra.parquet
 
 # Set the environment variables
 ENV GEOCODEUR_CONFIG_PATH="/config/geocodeur.conf"
