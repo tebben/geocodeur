@@ -110,39 +110,34 @@ func processParquet(pool *pgxpool.Pool, path string) {
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
 	}
+	defer fr.Close()
 
 	pr, err := reader.NewParquetReader(fr, new(Record), 4)
 	if err != nil {
 		log.Fatalf("Failed to create Parquet reader: %v", err)
 	}
+	defer pr.ReadStop()
 
-	numRows := int(pr.GetNumRows())
-	records := make([]Record, numRows)
-
-	if err := pr.Read(&records); err != nil {
-		log.Fatalf("Failed to read records: %v", err)
-	}
-
-	pr.ReadStop()
-	fr.Close()
+	batchSize := 100
+	sem := make(chan struct{}, 10) // Limit to 10 concurrent goroutines
 
 	var wg sync.WaitGroup
-	batchSize := 100
-	numBatches := (numRows + batchSize - 1) / batchSize
-
-	for i := 0; i < numBatches; i++ {
-		start := i * batchSize
-		end := start + batchSize
-		if end > numRows {
-			end = numRows
+	for {
+		records := make([]Record, batchSize)
+		var num int
+		if err := pr.Read(&records); err != nil {
+			log.Fatalf("Failed to read records: %v", err)
+		}
+		num = len(records)
+		if num == 0 {
+			break
 		}
 
 		wg.Add(1)
+		sem <- struct{}{} // Block if there are already 10 goroutines
 		go func(records []Record) {
 			defer wg.Done()
-			if err != nil {
-				log.Fatalf("Failed to begin transaction: %v", err)
-			}
+			defer func() { <-sem }() // Release a slot in the semaphore
 
 			tx, err := pool.Begin(context.Background())
 			if err != nil {
@@ -151,62 +146,68 @@ func processParquet(pool *pgxpool.Pool, path string) {
 			defer tx.Rollback(context.Background())
 
 			for _, rec := range records {
+				if rec.Name == "" {
+					continue
+				}
 				id := getNextID()
 				err := addOvertureFeature(tx, rec, id)
-
 				if err != nil {
 					log.Printf("Failed to insert record: %v", err)
 				}
 
-				// Insert alias for name + relation
-				if len(rec.Relation) > 0 {
-					relations := strings.Split(rec.Relation, ";")
-					for _, relation := range relations {
-						if rec.Name == relation {
-							continue
-						}
-
-						alias := rec.Name + " " + relation
-						addAlias(tx, rec.ID, alias, id)
-
-						// Add entry for relation aliases
-						for name, alias := range aliases {
-							if relation == name {
-								aliasEmbedding := rec.Name + " " + alias
-								addAlias(tx, rec.ID, aliasEmbedding, id)
-							}
-						}
-					}
-				}
-
-				// Add name as alias
-				addAlias(tx, rec.ID, rec.Name, id)
-
-				// Add aliases for name aliases
-				for name, alias := range aliases {
-					if rec.Name == name {
-						addAlias(tx, rec.ID, alias, id)
-					}
-				}
-
-				// Add embedding for truncated names
-				for _, truncation := range truncations {
-					if strings.Contains(rec.Name, truncation) {
-						alias := strings.Trim(strings.Replace(rec.Name, truncation, "", 1), " ")
-						addAlias(tx, rec.ID, alias, id)
-					}
-				}
+				// Process aliases
+				processAliases(tx, rec, id)
 			}
 
 			if err := tx.Commit(context.Background()); err != nil {
 				log.Fatalf("Failed to commit transaction: %v", err)
 			}
-
-		}(records[start:end])
+		}(records[:num])
 	}
 
 	wg.Wait()
 	log.Infof("Inserted %s\n", path)
+}
+
+func processAliases(tx pgx.Tx, rec Record, id uint64) {
+	// Add name as alias
+	addAlias(tx, rec.ID, rec.Name, id)
+
+	// Add aliases for name aliases
+	for name, alias := range aliases {
+		if rec.Name == name {
+			addAlias(tx, rec.ID, alias, id)
+		}
+	}
+
+	// Add embedding for truncated names
+	for _, truncation := range truncations {
+		if strings.Contains(rec.Name, truncation) {
+			alias := strings.Trim(strings.Replace(rec.Name, truncation, "", 1), " ")
+			addAlias(tx, rec.ID, alias, id)
+		}
+	}
+
+	// Add alias for name + relation
+	if len(rec.Relation) > 0 {
+		relations := strings.Split(rec.Relation, ";")
+		for _, relation := range relations {
+			if rec.Name == relation {
+				continue
+			}
+
+			alias := rec.Name + " " + relation
+			addAlias(tx, rec.ID, alias, id)
+
+			// Add entry for relation aliases
+			for name, alias := range aliases {
+				if relation == name {
+					aliasEmbedding := rec.Name + " " + alias
+					addAlias(tx, rec.ID, aliasEmbedding, id)
+				}
+			}
+		}
+	}
 }
 
 func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
