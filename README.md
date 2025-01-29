@@ -104,7 +104,7 @@ go run main.go server
 #### Query API
 
 ```sh
-curl -X GET "http://localhost:8080/api/geocode?q=Adr%20poorters%20Vught&class=road&limit=10"
+curl -X GET "http://localhost:8080/geocode?q=Adr%20poorters%20Vught&class=road&limit=10"
 ```
 
 FTS has a 1 result so no fallback to trigram matching is needed.
