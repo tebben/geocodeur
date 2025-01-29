@@ -159,7 +159,7 @@ func createGeocodeQuery(options GeocodeOptions, input string) string {
 			SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
 			FROM %s AS a
 			JOIN %s AS b ON a.feature_id = b.id
-			WHERE to_tsvector('simple', a.alias) @@ to_tsquery('simple',
+			WHERE a.vector_search @@ to_tsquery('simple',
 				replace($1, ' ', ':* & ') || ':*'
 			)
 			AND b.class IN %s

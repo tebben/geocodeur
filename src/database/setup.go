@@ -90,8 +90,8 @@ func CreateDB(config settings.Config) {
 		log.Fatalf("Failed to create index: %v", err)
 	}
 
-	log.Info("Creating search fts index")
-	err = createIndexFTS(pool)
+	log.Info("Creating fts column")
+	err = createFTSVectorColumn(pool)
 	if err != nil {
 		log.Fatalf("Failed to create index: %v", err)
 	}
@@ -292,7 +292,7 @@ func createTableSearch(pool *pgxpool.Pool, tablespace string) error {
 
         DROP TABLE IF EXISTS %[1]s;
         DROP INDEX IF EXISTS idx_%[1]s_trgm;
-		DROP INDEX IF EXISTS idx_%[1]s_fts;
+		DROP INDEX IF EXISTS idx_%[1]s_vector_search;
 
         CREATE TABLE %[1]s (
 			feature_id BIGINT,
@@ -331,9 +331,11 @@ func createIndexTrgm(pool *pgxpool.Pool) error {
 	return err
 }
 
-func createIndexFTS(pool *pgxpool.Pool) error {
+func createFTSVectorColumn(pool *pgxpool.Pool) error {
 	query := fmt.Sprintf(`
-		CREATE INDEX IF NOT EXISTS idx_%[1]s_fts ON %[1]s USING GIN (to_tsvector('simple', alias));
+		ALTER TABLE %[1]s ADD COLUMN vector_search tsvector;
+		UPDATE %[1]s SET vector_search = to_tsvector('simple', alias);
+		CREATE INDEX IF NOT EXISTS idx_%[1]s_vector_search ON %[1]s USING GIN (vector_search);
 	`, TABLE_SEARCH)
 
 	_, err := pool.Exec(context.Background(), query)
