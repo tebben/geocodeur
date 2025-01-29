@@ -29,3 +29,6 @@ overturemaps download --bbox "$bbox" -t place -f geoparquet -o "$download_direct
 
 echo "Downloading water data"
 overturemaps download --bbox "$bbox" -t water -f geoparquet -o "$download_directory/water.geoparquet"
+
+echo "Downloading infrastructure data"
+overturemaps download --bbox "$bbox" -t infrastructure -f geoparquet -o "$download_directory/infrastructure.geoparquet"
