@@ -32,6 +32,7 @@ type APIConfig struct {
 }
 
 type DatabaseConfig struct {
+	Name             string `json:"name"`
 	Schema           string `json:"schema"`
 	Tablespace       string `json:"tablespace"`
 	ConnectionString string `json:"connectionString"`
@@ -130,6 +131,10 @@ func loadConfig() error {
 
 	if config.API.PGTRGMTreshold == 0 {
 		config.API.PGTRGMTreshold = 0.45
+	}
+
+	if config.Database.Name == "" {
+		config.Database.Name = "geocodeur"
 	}
 
 	if config.Database.MaxConnections == 0 {
