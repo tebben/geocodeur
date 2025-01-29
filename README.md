@@ -101,6 +101,10 @@ When data is loaded in the database we can start the API server and fire some qu
 go run main.go server
 ```
 
+#### Docs
+
+OpenAPI docs available at [http://localhost:8080/docs](http://localhost:8080/docs)
+
 #### Query API
 
 ```sh
