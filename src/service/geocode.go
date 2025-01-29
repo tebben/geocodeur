@@ -149,15 +149,19 @@ func createGeocodeQuery(options GeocodeOptions, input string) string {
 		WITH fts AS (
 			SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
 			FROM %s AS a
+			JOIN %s AS b ON a.feature_id = b.id
 			WHERE to_tsvector('simple', a.alias) @@ to_tsquery('simple',
 				replace($1, ' ', ':* & ') || ':*'
 			)
+			AND b.class IN %s
 			ORDER BY sim
 		),
 		trgm AS (
 			SELECT feature_id, alias, similarity(a.alias, $1) AS sim, 'trgm' as search
 			FROM %s AS a
+			JOIN %s AS b ON a.feature_id = b.id
 			WHERE a.alias %% $1
+			AND b.class IN %s
 			ORDER BY a.alias <-> $1
 		),
 		alias_results AS (
@@ -208,8 +212,7 @@ func createGeocodeQuery(options GeocodeOptions, input string) string {
 		SELECT id, name, class, subclass, divisions, alias, search, sim, geom
 		FROM ranked_aliases
 		WHERE rnk = 1
-		AND class IN %s
 		ORDER BY sim desc, class_score asc, subclass_score asc
 		LIMIT %v;`,
-		database.TABLE_SEARCH, database.TABLE_SEARCH, geometryColumn, database.TABLE_OVERTURE, classesIn, options.Limit)
+		database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, geometryColumn, database.TABLE_OVERTURE, options.Limit)
 }
