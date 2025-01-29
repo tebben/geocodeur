@@ -177,8 +177,8 @@ We have features 'duplicated' as lines and polygons, remove a line if it's withi
 
 ### POI
 
-- Take all pois and do not filter on confidence for now
-- Add relations for locality to the pois
+- Take all pois with confidence 0.4 or higher
+- Add locality relation to pois
 
 ## Building executable
 
