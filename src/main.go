@@ -26,7 +26,6 @@ func initLogger(config settings.Config) {
 }
 
 func main() {
-	log.Info("Starting geocodeur")
 	if len(os.Args) < 1 {
 		log.Fatal("No command provided")
 	}
