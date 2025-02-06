@@ -84,6 +84,12 @@ func CreateDB(config settings.Config) {
 		log.Fatalf("Failed to create index: %v", err)
 	}
 
+	log.Info("Creating search rank index")
+	err = createIndexRank(pool)
+	if err != nil {
+		log.Fatalf("Failed to create index: %v", err)
+	}
+
 	log.Info("Creating search trgm index")
 	err = createIndexTrgm(pool)
 	if err != nil {
@@ -171,12 +177,12 @@ func processParquet(pool *pgxpool.Pool, path string) {
 
 func processAliases(tx pgx.Tx, rec Record, id uint64) {
 	// Add name as alias
-	addAlias(tx, rec.ID, rec.Name, id)
+	addAlias(tx, rec, rec.Name, id)
 
 	// Add aliases for name aliases
 	for name, alias := range aliases {
 		if rec.Name == name {
-			addAlias(tx, rec.ID, alias, id)
+			addAlias(tx, rec, alias, id)
 		}
 	}
 
@@ -184,7 +190,7 @@ func processAliases(tx pgx.Tx, rec Record, id uint64) {
 	for _, truncation := range truncations {
 		if strings.Contains(rec.Name, truncation) {
 			alias := strings.Trim(strings.Replace(rec.Name, truncation, "", 1), " ")
-			addAlias(tx, rec.ID, alias, id)
+			addAlias(tx, rec, alias, id)
 		}
 	}
 
@@ -197,13 +203,13 @@ func processAliases(tx pgx.Tx, rec Record, id uint64) {
 			}
 
 			alias := rec.Name + " " + relation
-			addAlias(tx, rec.ID, alias, id)
+			addAlias(tx, rec, alias, id)
 
 			// Add entry for relation aliases
 			for name, alias := range aliases {
 				if relation == name {
 					aliasEmbedding := rec.Name + " " + alias
-					addAlias(tx, rec.ID, aliasEmbedding, id)
+					addAlias(tx, rec, aliasEmbedding, id)
 				}
 			}
 		}
@@ -217,10 +223,15 @@ func addOvertureFeature(tx pgx.Tx, rec Record, recordId uint64) error {
 	return err
 }
 
-func addAlias(tx pgx.Tx, id, alias string, recordId uint64) error {
+func addAlias(tx pgx.Tx, rec Record, alias string, recordId uint64) error {
 	alias = strings.ToLower(alias)
-	query := fmt.Sprintf(`INSERT INTO %s (feature_id, alias) VALUES ($1, $2)`, TABLE_SEARCH)
-	_, err := tx.Exec(context.Background(), query, recordId, alias)
+	classRank := getClassRank(rec.Class)
+	subclassRank := getSubclassScore(rec.Subclass)
+	wordCount := len(strings.Split(alias, " "))
+	charCount := len(alias)
+
+	query := fmt.Sprintf(`INSERT INTO %s (feature_id, alias, class_rank, subclass_rank, word_count, char_count) VALUES ($1, $2, $3, $4, $5, $6)`, TABLE_SEARCH)
+	_, err := tx.Exec(context.Background(), query, recordId, alias, classRank, subclassRank, wordCount, charCount)
 
 	return err
 }
@@ -240,6 +251,13 @@ func vacuum(pool *pgxpool.Pool) error {
 }
 
 func setupDatabase(pool *pgxpool.Pool, schema string) error {
+	if schema != "" {
+		_, err := pool.Exec(context.Background(), fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s;", schema))
+		if err != nil {
+			return fmt.Errorf("failed to create schema: %v", err)
+		}
+	}
+
 	queryExtensions := `
 		CREATE EXTENSION IF NOT EXISTS postgis;
 		CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -250,12 +268,7 @@ func setupDatabase(pool *pgxpool.Pool, schema string) error {
 		return fmt.Errorf("failed to create extensions: %v", err)
 	}
 
-	if schema == "" {
-		return nil
-	}
-
-	_, err = pool.Exec(context.Background(), fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s;", schema))
-	return err
+	return nil
 }
 
 func createTableOverture(pool *pgxpool.Pool, tablespace string) error {
@@ -296,7 +309,11 @@ func createTableSearch(pool *pgxpool.Pool, tablespace string) error {
 
         CREATE TABLE %[1]s (
 			feature_id BIGINT,
-            alias TEXT
+            alias TEXT,
+			class_rank INT,
+			subclass_rank INT,
+			word_count INT,
+			char_count INT
         ) %[2]s;
     `, TABLE_SEARCH, tablespace)
 
@@ -308,6 +325,15 @@ func createForeignKey(pool *pgxpool.Pool) error {
 	query := fmt.Sprintf(`
 		ALTER TABLE %[1]s ADD CONSTRAINT fk_%[1]s_feature_id FOREIGN KEY (feature_id) REFERENCES %[2]s (id) ON DELETE CASCADE;
 	`, TABLE_SEARCH, TABLE_OVERTURE)
+
+	_, err := pool.Exec(context.Background(), query)
+	return err
+}
+
+func createIndexRank(pool *pgxpool.Pool) error {
+	query := fmt.Sprintf(`
+		CREATE INDEX IF NOT EXISTS idx_%[1]s_class_subclass ON %[1]s USING btree (class_rank, subclass_rank);
+	`, TABLE_SEARCH)
 
 	_, err := pool.Exec(context.Background(), query)
 	return err
@@ -340,4 +366,56 @@ func createFTSVectorColumn(pool *pgxpool.Pool) error {
 
 	_, err := pool.Exec(context.Background(), query)
 	return err
+}
+
+func getClassRank(class string) int {
+	switch class {
+	case "division":
+		return 1
+	case "water": // lot of division names with partly water name, maas, ijssel, etc, rank the same
+		return 1
+	case "road":
+		return 2
+	case "infra":
+		return 3
+	case "address":
+		return 4
+	case "zipcode":
+		return 5
+	case "poi":
+		return 6
+	default:
+		return 100
+	}
+}
+
+func getSubclassScore(subclass string) int {
+	switch subclass {
+	case "locality":
+		return 1
+	case "county":
+		return 2
+	case "neighboorhood":
+		return 3
+	case "microhood":
+		return 4
+	case "motorway":
+		return 1
+	case "trunk":
+		return 2
+	case "primary":
+		return 3
+	case "secondary":
+		return 4
+	case "tertiary":
+		return 5
+	case "unclassified":
+		return 6
+	case "residential":
+		return 6
+	case "living_street":
+		return 6
+	default:
+		return 100
+	}
 }

@@ -148,83 +148,85 @@ func parseGeocodeResults(rows pgx.Rows) ([]GeocodeResult, error) {
 func createGeocodeQuery(options GeocodeOptions, input string) string {
 	classesIn := options.ClassesToSqlArray()
 
+	// workaround for now since we do not have class in the search table
+	classesIn = strings.Replace(classesIn, "'division'", "1", -1)
+	classesIn = strings.Replace(classesIn, "'water'", "1", -1)
+	classesIn = strings.Replace(classesIn, "'road'", "2", -1)
+	classesIn = strings.Replace(classesIn, "'infra'", "3", -1)
+	classesIn = strings.Replace(classesIn, "'address'", "4", -1)
+	classesIn = strings.Replace(classesIn, "'zipcode'", "5", -1)
+	classesIn = strings.Replace(classesIn, "'poi'", "6", -1)
+
 	// Conditional geometry column
 	geometryColumn := "'' AS geom" // Default to an empty string if geometry is not included
 	if options.IncludeGeometry {
-		geometryColumn = "ST_AsGeoJSON(a.geom) AS geom"
+		geometryColumn = "ST_AsGeoJSON(b.geom) AS geom"
 	}
 
 	return fmt.Sprintf(`
 		WITH fts AS (
-			SELECT feature_id, alias, similarity(alias, $1) AS sim, 'fts' as search
-			FROM %s AS a
-			JOIN %s AS b ON a.feature_id = b.id
-			WHERE a.vector_search @@ to_tsquery('simple',
-				replace($1, ' ', ':* & ') || ':*'
-			)
-			AND b.class IN %s
-			ORDER BY sim
+			SELECT
+				feature_id, alias, class_rank, subclass_rank, 'fts' as search
+			FROM
+				%[1]s
+			WHERE
+				ABS(word_count - array_length(string_to_array($1, ' '), 1)) < 3
+			AND
+				ABS(char_count - LENGTH($1)) < 30
+			AND
+				vector_search @@ to_tsquery('simple', replace($1, ' ', ':* & ') || ':*')
+			AND
+				class_rank IN %[3]s
+			ORDER BY
+				class_rank ASC,
+				subclass_rank ASC
+			LIMIT 100
 		),
 		trgm AS (
-			SELECT feature_id, alias, similarity(a.alias, $1) AS sim, 'trgm' as search
-			FROM %s AS a
-			JOIN %s AS b ON a.feature_id = b.id
-			WHERE a.alias %% $1
-			AND b.class IN %s
-			ORDER BY a.alias <-> $1
+			SELECT feature_id, alias, class_rank, subclass_rank, 'trgm' as search
+			FROM %[1]s
+			WHERE
+				ABS(word_count - array_length(string_to_array($1, ' '), 1)) < 3
+			AND
+				ABS(char_count - LENGTH($1)) < 30
+			AND
+				alias %% $1
+			AND
+				class_rank IN %[3]s
+			ORDER BY
+				class_rank ASC,
+				subclass_rank ASC
+			LIMIT 100
 		),
-		alias_results AS (
+		search_results AS (
 			SELECT *
 			FROM fts
 			UNION ALL
 			SELECT *
 			FROM trgm
 			WHERE NOT EXISTS (SELECT 1 FROM fts)
-		), ranked_aliases AS (
-			SELECT
-				a.id,
-				a.name,
-				a.class,
-				a.subclass,
-				array_to_string(a.divisions, ',') AS divisions,
-				b.alias,
-				b.sim,
-				b.search,
-				%s, -- Geometry column is dynamically included or excluded
-				CASE
-					WHEN a.class = 'division' THEN 1
-					WHEN a.class = 'water' THEN 2
-					WHEN a.class = 'road' THEN 3
-					WHEN a.class = 'infra' THEN 4
-					WHEN a.class = 'address' THEN 5
-					WHEN a.class = 'zipcode' THEN 6
-					WHEN a.class = 'poi' THEN 7
-					ELSE 100
-				END AS class_score,
-				CASE
-					WHEN a.subclass = 'locality' THEN 1
-					WHEN a.subclass = 'county' THEN 2
-					WHEN a.subclass = 'neighboorhood' THEN 3
-					WHEN a.subclass = 'microhood' THEN 4
-					-- roads up to living_street the rest gets a high score
-					WHEN a.subclass = 'motorway' THEN 1
-					WHEN a.subclass = 'trunk' THEN 2
-					WHEN a.subclass = 'primary' THEN 3
-					WHEN a.subclass = 'secondary' THEN 4
-					WHEN a.subclass = 'tertiary' THEN 5
-					WHEN a.subclass = 'unclassified' THEN 6
-					WHEN a.subclass = 'residential' THEN 7
-					WHEN a.subclass = 'living_street' THEN 8
-					ELSE 100
-				END AS subclass_score,
-				ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY similarity(b.alias, $1) DESC) AS rnk
-			FROM %s a
-			JOIN alias_results b ON a.id = b.feature_id
+		),
+		similarity as (
+			select
+				feature_id,
+				alias,
+				class_rank,
+				subclass_rank,
+				similarity(alias, $1) AS sim,
+				search,
+				ROW_NUMBER() OVER (PARTITION BY feature_id ORDER BY similarity(alias, $1) DESC) AS rnk
+			from search_results
 		)
-		SELECT id, name, class, subclass, divisions, alias, search, sim, geom
-		FROM ranked_aliases
-		WHERE rnk = 1
-		ORDER BY sim desc, class_score asc, subclass_score asc
-		LIMIT %v;`,
-		database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, geometryColumn, database.TABLE_OVERTURE, options.Limit)
+		SELECT
+			b.id, b.name, b.class, b.subclass, b.divisions::varchar, a.alias, a.search, a.sim, %[4]s
+		FROM similarity AS a
+		INNER JOIN
+			%[2]s AS b ON a.feature_id = b.id
+		WHERE a.rnk = 1
+		ORDER by
+			sim desc,
+			class_rank asc,
+			subclass_rank asc
+		LIMIT %[5]v;`,
+		database.TABLE_SEARCH, database.TABLE_OVERTURE, classesIn, geometryColumn, options.Limit)
 }
