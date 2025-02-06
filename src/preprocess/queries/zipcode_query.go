@@ -25,7 +25,8 @@ COPY (
 	SELECT
 		a.id,
 		a.zipcode AS name,
-		ST_AsText(a.geom) AS geom,
+		ST_AsGeoJSON(a.geom) AS geom,
+		ST_AsText(ST_Centroid(a.geom)) AS centroid,
 		'zipcode' as class,
 		'zipcode' as subclass,
 		NULL::VARCHAR as relation

@@ -37,7 +37,8 @@ COPY (
     SELECT
 		a.id,
 		a.street || ' ' || a.number AS name,
-		ST_AsText(a.geometry) AS geom,
+		ST_AsGeoJSON(a.geometry) AS geom,
+		ST_AsText(ST_Centroid(a.geometry)) AS centroid,
 		'address' as class,
 		'address' as subclass,
 		array_to_string([x.value for x in address_levels], ';') as relation

@@ -15,6 +15,7 @@ var configFile = getConfigLocation()
 type Config struct {
 	Server   ServerConfig   `json:"server"`
 	API      APIConfig      `json:"api"`
+	Meili    MeiliConfig    `json:"meili"`
 	Database DatabaseConfig `json:"database"`
 	Process  ProcessConfig  `json:"process"`
 }
@@ -37,6 +38,11 @@ type DatabaseConfig struct {
 	Tablespace       string `json:"tablespace"`
 	ConnectionString string `json:"connectionString"`
 	MaxConnections   int32  `json:"maxConnections"`
+}
+
+type MeiliConfig struct {
+	Host string `json:"host"`
+	Key  string `json:"key"`
 }
 
 type CorsConfig struct {
@@ -131,6 +137,14 @@ func loadConfig() error {
 
 	if config.API.PGTRGMTreshold == 0 {
 		config.API.PGTRGMTreshold = 0.45
+	}
+
+	if config.Meili.Host == "" {
+		config.Meili.Host = "http://localhost:7700"
+	}
+
+	if config.Meili.Key == "" {
+		config.Meili.Key = "E8H-DDQUGhZhFWhTq263Ohd80UErhFmLIFnlQK81oeQ"
 	}
 
 	if config.Database.Name == "" {

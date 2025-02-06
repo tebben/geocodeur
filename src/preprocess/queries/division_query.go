@@ -40,7 +40,8 @@ var DivisionQuery = `
         SELECT
             d.id,
             d.name,
-            ST_AsText(d.geom) AS geom,
+            ST_AsGeoJSON(d.geom) AS geom,
+            ST_AsText(ST_Centroid(d.geom)) AS centroid,
             d.class,
             d.subclass,
             STRING_AGG(DISTINCT r.relation_name, ';') FILTER (WHERE r.relation_name IS NOT NULL) AS relation
@@ -53,6 +54,7 @@ var DivisionQuery = `
         id,
         name,
         geom,
+        centroid,
         class,
         subclass,
         relation

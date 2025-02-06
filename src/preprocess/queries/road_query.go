@@ -124,7 +124,8 @@ COPY (
         SELECT
             a.id,
             a.name,
-            ST_AsText(a.geom) AS geom,
+            ST_AsGeoJSON(a.geom) AS geom,
+            ST_AsText(ST_Centroid(a.geom)) AS centroid,
             a.class,
             a.subclass,
             STRING_AGG(DISTINCT b.relation_name, ';') FILTER (WHERE b.relation_name IS NOT NULL) AS relation
@@ -141,6 +142,7 @@ COPY (
         id,
         name,
         geom,
+        centroid,
         class,
         subclass,
         relation

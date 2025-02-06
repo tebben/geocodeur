@@ -1,17 +1,14 @@
 services:
-  geocodeur-db:
-    image: "postgis/postgis:17-3.5"
-    container_name: "geocodeur-db"
+  meilisearch:
+    image: "getmeili/meilisearch:v1.12"
+    container_name: "meilisearch"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: geocodeur
+      MEILI_MASTER_KEY: E8H-DDQUGhZhFWhTq263Ohd80UErhFmLIFnlQK81oeQ
+      MEILI_NO_ANALYTICS: true
     ports:
-      - "5432:5432"
+      - "7700:7700"
     volumes:
-      - geocodeur_data:/var/lib/postgresql/data
-      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
-    command: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+      - ./data/meili_data:/meili_data
 
 volumes:
   geocodeur_data:

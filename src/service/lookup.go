@@ -1,5 +1,27 @@
 package service
 
+import "encoding/json"
+
+type LookupResult struct {
+	ID        uint64          `json:"id" doc:"The id of the feature, not the original Overture id"`
+	Name      string          `json:"name" doc:"The name of the feature"`
+	Class     string          `json:"class" doc:"The class of the feature"`
+	Subclass  string          `json:"subclass" doc:"The subclass of the feature"`
+	Divisions string          `json:"divisions" doc:"The divisions of the feature"`
+	Geom      json.RawMessage `json:"geom" doc:"The geometry of the feature in GeoJSON format"`
+}
+
+/*
+curl \
+  -X GET 'http://localhost:7700/indexes/geocodeur/documents/1320034' \
+  -H 'Authorization: Bearer E8H-DDQUGhZhFWhTq263Ohd80UErhFmLIFnlQK81oeQ' \
+  -H 'Content-Type: application/json'
+
+  curl \
+  -X GET 'http://localhost:7700/indexes/geocodeur/settings/ranking-rules' \
+   -H 'Authorization: Bearer E8H-DDQUGhZhFWhTq263Ohd80UErhFmLIFnlQK81oeQ' \
+   -H 'Content-Type: application/json'
+
 import (
 	"context"
 	"database/sql"
@@ -80,3 +102,4 @@ func createLookupQuery() string {
 				id = $1;`,
 		database.TABLE_OVERTURE)
 }
+*/

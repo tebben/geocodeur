@@ -18,7 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tebben/geocodeur/api/handlers"
 	"github.com/tebben/geocodeur/api/middleware"
-	"github.com/tebben/geocodeur/database"
+	"github.com/tebben/geocodeur/httpclientpool"
 	"github.com/tebben/geocodeur/settings"
 )
 
@@ -26,8 +26,6 @@ import (
 // It initializes the necessary resources, sets up the main handler,
 // and listens for incoming HTTP requests on the specified port.
 func Start(config settings.Config) {
-	setPgtrmTreshold(config)
-
 	router := createRouter(config)
 	server := &http.Server{Addr: fmt.Sprintf(":%v", config.Server.Port), Handler: router}
 	serverCtx, serverStopCtx := context.WithCancel(context.Background())
@@ -59,7 +57,9 @@ func Start(config settings.Config) {
 	}()
 
 	log.Info(fmt.Sprintf("PGRest started, running on port %v", config.Server.Port))
-	defer database.CloseDBPools()
+
+	poolInstance := httpclientpool.GetPoolInstance()
+	defer poolInstance.Close()
 
 	err := server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
@@ -134,14 +134,4 @@ func registerRoutes(api huma.API, config settings.Config) {
 		Summary:     "Lookup",
 		Description: "Lookup a feature based on its ID.",
 	}, handlers.LookupHandler(config))
-}
-
-func setPgtrmTreshold(config settings.Config) {
-	pool, err := database.GetDBPool("geocodeur", config.Database)
-	if err != nil {
-		log.Errorf("Error getting database pool: %v", err)
-		return
-	}
-
-	pool.Exec(context.Background(), fmt.Sprintf("ALTER DATABASE %s SET pg_trgm.similarity_threshold = %v;", config.Database.Name, config.API.PGTRGMTreshold))
 }

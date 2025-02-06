@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/tebben/geocodeur/service"
 	"github.com/tebben/geocodeur/settings"
 )
@@ -25,7 +23,8 @@ func LookupHandler(config settings.Config) func(ctx context.Context, input *stru
 	return func(ctx context.Context, input *struct {
 		LookupInput
 	}) (*LookupResult, error) {
-		result, err := service.Lookup(config.Database.ConnectionString, input.ID)
+		return nil, nil
+		/* result, err := service.Lookup(config.Database.ConnectionString, input.ID)
 		if err != nil {
 			return nil, huma.Error400BadRequest(fmt.Sprintf("%v", err))
 		}
@@ -33,6 +32,6 @@ func LookupHandler(config settings.Config) func(ctx context.Context, input *stru
 		lookupResult := &LookupResult{}
 		lookupResult.Body.Feature = result
 
-		return lookupResult, nil
+		return lookupResult, nil */
 	}
 }

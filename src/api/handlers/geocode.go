@@ -40,7 +40,7 @@ func GeocodeHandler(config settings.Config) func(ctx context.Context, input *str
 		}
 
 		timeStart := time.Now()
-		results, err := service.Geocode(config.Database.ConnectionString, geocodeOptions, input.Query)
+		results, err := service.Geocode(geocodeOptions, input.Query)
 		if err != nil {
 			return nil, huma.Error400BadRequest(fmt.Sprintf("%v", err))
 		}
@@ -59,7 +59,7 @@ func createGeocoderOptions(config settings.Config, input GeocodeInput) (service.
 		return service.GeocodeOptions{}, errors.NewAPIError(http.StatusBadRequest, err.Error(), nil)
 	}
 
-	return service.NewGeocodeOptions(config.API.PGTRGMTreshold, input.Limit, classes, input.Geom), nil
+	return service.NewGeocodeOptions(input.Limit, classes, input.Geom), nil
 }
 
 func getClasses(input GeocodeInput) ([]service.Class, error) {
