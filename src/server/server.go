@@ -22,7 +22,7 @@ import (
 	"github.com/tebben/geocodeur/settings"
 )
 
-// Start starts the PGRest server with the given configuration.
+// Start starts the Geocodeur server with the given configuration.
 // It initializes the necessary resources, sets up the main handler,
 // and listens for incoming HTTP requests on the specified port.
 func Start(config settings.Config) {
@@ -58,7 +58,7 @@ func Start(config settings.Config) {
 		serverStopCtx()
 	}()
 
-	log.Info(fmt.Sprintf("PGRest started, running on port %v", config.Server.Port))
+	log.Info(fmt.Sprintf("Geocodeur started, running on port %v", config.Server.Port))
 	defer database.CloseDBPools()
 
 	err := server.ListenAndServe()
