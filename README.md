@@ -14,7 +14,7 @@ The geocoder includes the following data categories:
 
 To improve search precision, multiple aliases can be generated for each Overture Maps feature. These aliases anticipate user input that may combine multiple locations to refine search results. For example, in the Netherlands, many streets are named "Kerkstraat." If a user searches for "Kerkstraat Amsterdam," the geocoder should prioritize "Kerkstraat" in Amsterdam as the top result. To achieve this, aliases like "Kerkstraat" and "Kerkstraat {intersecting division.locality}" are added. These aliases vary based on the class and subclass of the feature.
 
-Postgres Full Text Search (FTS) is used to index the aliases and can handle most of the queries efficiently. For instance if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam. When FTS is not able to find a match, trigram matching takes over to find similar results, this approach is more tolerant of typos.
+Postgres Full Text Search (FTS) is used to index the aliases and can handle most of the queries efficiently. For instance if a user types "Kerkstr Amsterd," the geocoder can still locate "Kerkstraat" in Amsterdam. When FTS is not able to find a match for example in case of a typo, trigram matching takes over to find similar results.
 
 Additionally, related segments for road, water and infra are merged into a single entry, enabling retrieval of the full feature rather than fragmented segments in the Overture Maps data. This approach reduces the likelihood of excessive high-matching results for the same road or water.
 
@@ -27,6 +27,7 @@ For entries with names like "'s-Hertogenbosch," a common alias "den bosch" can b
 
 This is a first experiment and seems to work pretty good but there are still some todo's.
 
+- Make aliases configurable trough config
 - API: Endpoint for reverse geocoding
 - API: Filter results based on bbox
 - API: Batch geocoding
@@ -42,12 +43,6 @@ To download data we can use the overturemaps CLI tool and to process the data we
 
 ```sh
 pip install overturemaps
-```
-
-To install DuckDB we can use the following commands.
-
-```sh
-curl --fail --location --progress-bar --output duckdb_cli-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && unzip duckdb_cli-linux-amd64.zip
 ```
 
 Now we can download all data from Overture Maps with a given bounding box using the `download` script. The script will download all data in the bounding box and store it in the `data/download` directory.
@@ -100,33 +95,43 @@ OpenAPI docs available at [http://localhost:8080/docs](http://localhost:8080/doc
 #### Query API
 
 ```sh
-curl -X GET "http://localhost:8080/geocode?q=Adr%20poorters%20Vught&class=road&limit=10"
+curl -X GET "http://localhost:8080/geocode?q=Adr%20poorters%20Vught&class=road&geom=true&limit=10"
 ```
 
 FTS has a 1 result so no fallback to trigram matching is needed.
 
 ```json
 {
-  "ms": 3,
-  "results": [
-    {
-      "name": "Adriaan Poortersstraat",
-      "class": "road",
-      "subclass": "residential",
-      "divisions": "Vught",
-      "alias": "adriaan poortersstraat vught",
-      "searchType": "fts",
-      "similarity": 0.548,
-      "geom": {
-        "type": "LineString",
-        "coordinates": [
-          [5.2859974, 51.6466151],
-          [5.2860828, 51.646718],
-          [5.2891755, 51.6474486]
-        ]
-      }
-    }
-  ]
+    "queryTime": 6,
+    "results": [
+        {
+            "id": 339468,
+            "name": "Adriaan Poortersstraat",
+            "class": "road",
+            "subclass": "residential",
+            "divisions": "{Vught}",
+            "alias": "adriaan poortersstraat vught",
+            "searchType": "fts",
+            "similarity": 0.548,
+            "geom": {
+                "type": "LineString",
+                "coordinates": [
+                    [
+                        5.2859974,
+                        51.6466151
+                    ],
+                    [
+                        5.2860828,
+                        51.646718
+                    ],
+                    [
+                        5.2891755,
+                        51.6474486
+                    ]
+                ]
+            }
+        }
+    ]
 }
 ```
 
@@ -134,22 +139,26 @@ FTS has a 1 result so no fallback to trigram matching is needed.
 
 ### Database
 
-The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for fast searching using the PostgreSQL extension `pg_trgm` and another index on alias also using gin but with `to_tsvector` on `alias` for FTS.
+The database consists of 2 tables: `overture` and `overture_search`. The `overture` table contains the features from Overture Maps and the `overture_search` table contains aliases for the features which point to the `overture` table. The column `alias` in the `overture_search` table has a `gin_trgm_ops` index on it for searching using the PostgreSQL extension `pg_trgm`. A column `vector_search` is added to the `overture_search` table which contains a tsvector of the aliases and is used for full text search. The rest of the colums: `class_rank`, `subclass_rank`, `word_count` and `char_count` are used for filtering and ranking the results.
 
 ![example](./static/example.jpg)
 
 ### Division
 
-- Add locality relations for neighbourhoods & microhood features
-- Add county relations for locality features
-- Add region relations for county features
+#### Process
+
+- Adds locality relations for neighbourhoods & microhood features
+- Adds county relations for locality features
+- Adds region relations for county features
 
 ### Road
 
-- Only segments with a primary name, we cannot search for a segment without a name so we leave them out.
-- Only segments with a subtype road. Tracks are not usefull for geocoding and water we will get from a different source since water features are segments and not water bodies.
-- Roads can be split up in multiple segments in the overture data: Buffer roads and uninion where features have the same name and class and are close to each other. This way we can cluster roads and get the full road when searching for a road.
-- Add relations for locality to roads but exlude relations for motorways since this does not make much sense.
+#### Process
+
+- Only picks segments with a primary name, we cannot search for a segment without a name so we leave them out.
+- Only picks segments with a subtype road. Tracks are not usefull for geocoding and water we will get from a different source since water features are segments and not water bodies.
+- Merges clusterable segments into 1 feature
+- Adds relations for locality to roads but exlude relations for motorways since this does not make much sense.
 
 #### ToDo
 
@@ -159,30 +168,37 @@ The database consists of 2 tables: `overture` and `overture_search`. The `overtu
 
 ### Water
 
-- Only water with primary name
-- Subtype is most of the time the same as class and not helpfull use subtype as subclass
-- Features with lines are sometimes split up and also can represent the same feature, these need to be grouped and merged
-- Polygons are not directly split up but need to be grouped aswell when close and representing the same feature
+#### Process
+
+- Only picks features with primary name
+- Selects overture subtype as subclass
+- Merges clusterable features into 1 feature (works for polygons and lines)
 
 #### ToDo
 
-We have features 'duplicated' as lines and polygons, remove a line if it's within a polygon with the same name and subclass
+- We have features 'duplicated' as lines and polygons, remove a line if it's within a polygon with the same name and subclass
 
 ### POI
 
-- Take all pois with confidence 0.4 or higher
-- Add locality relation to pois
+#### Process
+
+- Takes all pois with confidence 0.4 or higher
+- Adds locality relation to features
 
 ### Address
 
-- Combine street and number for name
-- Use address_levels for relations
+#### Process
+
+- Combines street and number for name/alias
+- Picks address_levels for relations
 
 ### Zipcode
 
-These are not official zipcode areas but generated from the address data.
+These are not official zipcode areas but are generated based on zipcodes from the address data.
 
-- Group addresses by zipcode and union geometries and create convex hull
+#### Process
+
+- Groups addresses by zipcode and union geometries and create convex hull as zipcode area
 
 #### ToDo
 
@@ -190,9 +206,11 @@ These are not official zipcode areas but generated from the address data.
 
 ### Infra
 
-- Take only infra with a name and filter out some classes that are not usefull for geocoding
-- Merge close infra features with the same name and class
-- Add locality relation to infra
+#### Process
+
+- Takes only infra features with a name and filters out some classes that are not usefull for geocoding
+- Merges close infra features with same name and class
+- Adds locality relation to features
 
 ## Building executable
 
@@ -210,3 +228,25 @@ Latest image is available on ghcr.io.
 ```sh
 docker run --network host -v ./config/geocodeur.conf:/config/geocodeur.conf ghcr.io/tebben/geocodeur:latest
 ```
+
+## Tests
+
+### pg_trgm
+
+pg_trgm can be very fast but the performance tanks when there are a lot of aliases in the database containing the same word. For instance searching for `Amsterdam` results in 620.000 features, when ordering by similarity the query takes multiple seconds while we are looking for sub 100ms response times. pg_trgm is however very helpfull when there are typing errors so in the current setup pg_trgm is only used as a fallback when FTS does not return any results.
+
+### Meilisearch
+
+Performance is great but adds another service to the stack. With some effort of trying to rank the results I got some ok responses but still got some unexpected results for some inputs. Overall a great tool but maybe not the best for our use case.
+
+### Bluge/bleve
+
+I tried to have a more integrated solution with Bluge/bleve, played around alot to get the best results which were ok in the end but the performance was not satisfying enough.
+
+### Typesense
+
+Not able to get expected results.
+
+### ToDo
+
+Would be fun to explore a custom solution in Go using BK-tree, trigrams and inverted indexes to see if we can get good results and fast response times directly in Geocodeur.
